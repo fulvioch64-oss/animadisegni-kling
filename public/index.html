@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#fffdf5">
+  <meta name="description" content="Turn children's artwork into one-of-a-kind animated greeting cards. Bring a favorite drawing—or photo—to life.">
+  <title>Little Moves — Animated Greeting Cards from Children's Art</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Patrick+Hand&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <header class="navbar">
+    <a class="logo" href="#" aria-label="Little Moves, home" data-i18n-aria-label="brandHome"><span aria-hidden="true">✨</span> Little Moves</a>
+    <div class="navbar-tools">
+      <span class="header-note"><span data-i18n="headerNote">Big feelings, little masterpieces!</span> <span aria-hidden="true">🌈</span></span>
+      <label class="language-picker">
+        <span class="visually-hidden" data-i18n="languageLabel">Language</span>
+        <select id="languageSelect" aria-label="Language" data-i18n-aria-label="languageLabel">
+          <option value="en">English</option>
+          <option value="it">Italiano</option>
+        </select>
+      </label>
+    </div>
+  </header>
+
+  <section class="hero">
+    <span class="eyebrow" data-i18n="heroEyebrow">CHILDREN'S ARTWORK & PHOTO GREETING CARDS</span>
+    <h1><span class="hero-title-main" data-i18n="heroTitle">Bring their artwork</span><br><span data-i18n="heroTitleAccent">to life!</span></h1>
+    <p><span data-i18n="heroDescription">Turn a child's drawing into a one-of-a-kind animated greeting card.</span><br><span data-i18n="heroDescriptionPhoto">You can also bring a favorite photo to life.</span></p>
+    <div class="hero-doodles" aria-hidden="true"><span>⭐</span><span>☁️</span><span>🎈</span></div>
+  </section>
+
+  <main class="editor-container">
+    <section class="card step-card">
+      <div class="step-heading"><span class="step-number">1</span><div><h2 data-i18n="uploadHeading">Start with a little masterpiece</h2><p data-i18n="uploadDescription">Upload a child's drawing, or choose a photo of someone special.</p></div></div>
+      <div class="photo-tips" aria-label="Tips for choosing an image" data-i18n-aria-label="photoTipsLabel">
+        <span data-i18n="tipOne">🖍️ One character works best</span><span data-i18n="tipTwo">☀️ Clear, bright image</span><span data-i18n="tipThree">🙌 Keep the whole drawing in frame</span>
+      </div>
+      <div class="upload-zone" id="uploadZone" role="button" tabindex="0" aria-label="Upload a drawing or photo" data-i18n-aria-label="uploadAriaLabel">
+        <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp" hidden>
+        <div class="upload-content" id="uploadContent">
+          <span class="upload-icon" aria-hidden="true">🎨</span>
+          <p><strong data-i18n="uploadPrompt">Drop a drawing or photo here</strong></p>
+          <span><span data-i18n="uploadOr">or</span> <u data-i18n="uploadChoose">choose from your device</u></span>
+          <small data-i18n="uploadLimit">JPG, PNG or WEBP · up to 10 MB</small>
+        </div>
+        <img id="imagePreview" class="preview-img hidden" alt="Preview of your selected image" data-i18n-alt="imagePreviewAlt">
+        <button type="button" id="changePhoto" class="change-photo hidden" data-i18n="changeImage">Change image</button>
+      </div>
+    </section>
+
+    <section class="dev-card" aria-labelledby="devHeading">
+      <div><h2 id="devHeading" data-i18n="editorHeading">🎬 Make your greeting card move</h2><p data-i18n="editorDescription">Create a short animated preview. Your final video is ready to download after checkout.</p></div>
+      <div class="form-group">
+        <label for="motionPreset" data-i18n="motionLabel">Dance style</label>
+        <select id="motionPreset">
+          <option value="reggaeton" data-i18n="danceReggaeton">Reggaeton</option>
+          <option value="hip-hop" data-i18n="danceHipHop">Hip-hop</option>
+          <option value="ballet" data-i18n="danceBallet">Ballet</option>
+        </select>
+      </div>
+      <button type="button" id="btnTest" class="btn-secondary" disabled data-i18n="createPreview">✨ Create animated preview</button>
+      <p id="testStatus" class="status" role="status" aria-live="polite"></p>
+      <div id="generationProgress" class="generation-progress hidden" aria-live="polite">
+        <div class="progress-row">
+          <div class="progress-track" role="progressbar" aria-label="Animation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-i18n-aria-label="progressLabel">
+            <div id="progressFill" class="progress-fill"></div>
+          </div>
+          <span id="progressValue" class="progress-value">0%</span>
+        </div>
+        <p id="progressMessage" class="progress-message" data-i18n="progressAnalyze">Taking a closer look at the artwork...</p>
+      </div>
+      <div id="resultBox" class="result-box hidden">
+        <div class="video-preview">
+          <video id="resultVideo" controls playsinline></video>
+          <span class="video-watermark" aria-hidden="true" data-i18n="previewWatermark">Little Moves · PREVIEW</span>
+        </div>
+        <section id="offerCard" class="offer-card hidden" aria-labelledby="offerHeading">
+          <span class="offer-sparkle" aria-hidden="true">🎁</span>
+          <div class="offer-copy"><span class="offer-label" data-i18n="offerLabel">YOUR ANIMATED CARD IS READY</span><h2 id="offerHeading" data-i18n="offerHeading">Watermark-free download · €2.79</h2><p data-i18n="paymentDescription">One-time purchase, securely verified by LemonSqueezy.</p></div>
+          <button type="button" id="btnCheckout" class="btn-primary" data-i18n="checkoutButton">⬇️ Get your video · €2.79</button>
+          <p id="checkoutStatus" class="status" role="status" aria-live="polite"></p>
+          <button type="button" id="btnLocalPayment" class="btn-secondary hidden" data-i18n="simulatePayment">🧪 Simulate local payment</button>
+          <a id="downloadVideo" class="download-video btn-primary hidden" href="#" data-i18n="downloadButton">⬇️ Download without watermark</a>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <footer><span data-i18n="footer">Made with love for little artists and the people who love them</span> <span aria-label="love" data-i18n-aria-label="loveLabel">💛</span></footer>
+</body>
+</html>
