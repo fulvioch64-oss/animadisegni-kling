@@ -8,7 +8,7 @@
   <title>Little Moves — Animated Greeting Cards from Children's Art</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Patrick+Hand&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Patrick+Hand&family=Caveat:wght@500;700&family=Baloo+2:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./style.css">
   <script type="module" src="./app.js"></script>
 </head>
@@ -30,8 +30,33 @@
   <section class="hero">
     <span class="eyebrow" data-i18n="heroEyebrow">CHILDREN'S ARTWORK & PHOTO GREETING CARDS</span>
     <h1><span class="hero-title-main" data-i18n="heroTitle">Bring their artwork</span><br><span data-i18n="heroTitleAccent">to life!</span></h1>
-    <p><span data-i18n="heroDescription">Turn a child's drawing into a one-of-a-kind animated greeting card.</span><br><span data-i18n="heroDescriptionPhoto">You can also bring a favorite photo to life.</span></p>
-    <div class="hero-doodles" aria-hidden="true"><span>⭐</span><span>☁️</span><span>🎈</span></div>
+    <div class="demo-grid">
+      <figure class="demo-figure">
+        <video class="demo-video" src="./demo/demokid.mp4" autoplay loop muted playsinline preload="metadata" aria-label="Demo video" data-i18n-aria-label="demoAriaLabel"></video>
+        <button type="button" class="demo-sound" aria-pressed="false" data-i18n="demoSoundOn">🔇 Turn sound on</button>
+        <figcaption data-i18n="demoCaption">Example: 2D Drawing transformed into 3D Claymation</figcaption>
+      </figure>
+      <figure class="demo-figure">
+        <video class="demo-video" src="./demo/auguri-mamma.mp4" autoplay loop muted playsinline preload="metadata" aria-label="Greeting card video" data-i18n-aria-label="demoMumAriaLabel"></video>
+        <button type="button" class="demo-sound" aria-pressed="false" data-i18n="demoSoundOn">🔇 Turn sound on</button>
+        <figcaption data-i18n="demoMumCaption">Greeting card: “Love you Mum!”</figcaption>
+      </figure>
+      <figure class="demo-figure">
+        <video class="demo-video" src="./demo/bimba3d.mp4" autoplay loop muted playsinline preload="metadata" aria-label="3D Cartoon / Claymation video" data-i18n-aria-label="demoClayAriaLabel"></video>
+        <button type="button" class="demo-sound" aria-pressed="false" data-i18n="demoSoundOn">🔇 Turn sound on</button>
+        <figcaption data-i18n="demoClayCaption">Style: 3D Cartoon / Claymation</figcaption>
+      </figure>
+      <figure class="demo-figure">
+        <video class="demo-video" src="./demo/bimba.mp4" autoplay loop muted playsinline preload="metadata" aria-label="Real Draw / Real Person video" data-i18n-aria-label="demoRealAriaLabel"></video>
+        <button type="button" class="demo-sound" aria-pressed="false" data-i18n="demoSoundOn">🔇 Turn sound on</button>
+        <figcaption data-i18n="demoRealCaption">Style: Real Draw / Real Person</figcaption>
+      </figure>
+      <figure class="demo-figure">
+        <video class="demo-video" src="./demo/nonno-dance.mp4" autoplay loop muted playsinline preload="metadata" aria-label="Video from a real person's photo" data-i18n-aria-label="demoGrandpaAriaLabel"></video>
+        <button type="button" class="demo-sound" aria-pressed="false" data-i18n="demoSoundOn">🔇 Turn sound on</button>
+        <figcaption data-i18n="demoGrandpaCaption">Example with a real person (photo)</figcaption>
+      </figure>
+    </div>
   </section>
 
   <main class="editor-container">
@@ -53,17 +78,116 @@
       </div>
     </section>
 
+    <div id="cropperModal" class="cropper-modal hidden" role="dialog" aria-modal="true" aria-labelledby="cropperTitle">
+      <div class="cropper-box">
+        <h3 id="cropperTitle" data-i18n="cropperTitle">Center your subject</h3>
+        <p class="cropper-hint" data-i18n="cropperHint">Drag to move, use the slider or mouse wheel to zoom.</p>
+        <canvas id="cropperCanvas" class="cropper-canvas"></canvas>
+        <div class="cropper-controls">
+          <button type="button" id="cropperZoomOut" class="btn-secondary" aria-label="Zoom out" data-i18n-aria-label="cropperZoomOut">−</button>
+          <input type="range" id="cropperZoom" min="0.3" max="4" step="0.01" value="1" aria-label="Zoom" data-i18n-aria-label="cropperZoomLabel">
+          <button type="button" id="cropperZoomIn" class="btn-secondary" aria-label="Zoom in" data-i18n-aria-label="cropperZoomIn">+</button>
+          <button type="button" id="cropperRotate" class="btn-secondary" data-i18n="cropperRotate">⟳ Rotate 90°</button>
+          <button type="button" id="cropperReset" class="btn-secondary" data-i18n="cropperReset">Reset</button>
+        </div>
+        <div class="cropper-actions">
+          <button type="button" id="cropperCancel" class="btn-secondary" data-i18n="cropperCancel">Cancel</button>
+          <button type="button" id="cropperConfirm" class="btn-primary" data-i18n="cropperConfirm">Confirm and center</button>
+        </div>
+      </div>
+    </div>
+
     <section class="dev-card" aria-labelledby="devHeading">
-      <div><h2 id="devHeading" data-i18n="editorHeading">🎬 Make your greeting card move</h2><p data-i18n="editorDescription">Create a short animated preview. Your final video is ready to download after checkout.</p></div>
+      <div><h2 id="devHeading" data-i18n="editorHeading">🎬 Make your greeting card move</h2><p data-i18n="editorDescription">Each new video uses 1 credit. Retries of the same drawing use your free retry credits.</p></div>
+      <div class="credits-bar" aria-live="polite">
+        <span class="credit-pill"><strong id="mainCreditsValue">0</strong> <span data-i18n="creditsMain">HD videos</span></span>
+        <span class="credit-pill"><strong id="retryCreditsValue">0</strong> <span data-i18n="creditsRetry">free retries</span></span>
+        <button type="button" id="btnBuyCredits" class="btn-secondary credits-buy" data-i18n="buyCredits">Buy credits</button>
+      </div>
       <div class="form-group">
-        <label for="motionPreset" data-i18n="motionLabel">Dance style</label>
+        <label for="motionPreset" data-i18n="styleMusicLabel">Style & music</label>
         <select id="motionPreset">
-          <option value="reggaeton" data-i18n="danceReggaeton">Reggaeton</option>
-          <option value="hip-hop" data-i18n="danceHipHop">Hip-hop</option>
-          <option value="ballet" data-i18n="danceBallet">Ballet</option>
+          <option value="disco70" data-i18n="musicDisco70" selected>Classic Disco 70's</option>
+          <option value="claudiette" data-i18n="musicClaudiette">Reggaeton / Latin</option>
+          <option value="doodle_cheerful" data-i18n="musicDoodle">Cheerful Doodle</option>
+          <option value="gentle_waltz" data-i18n="musicWaltz">Baby Waltz</option>
         </select>
       </div>
-      <button type="button" id="btnTest" class="btn-secondary" disabled data-i18n="createPreview">✨ Create animated preview</button>
+      <fieldset class="form-group aspect-group">
+        <legend data-i18n="aspectLabel">Video format</legend>
+        <label class="aspect-option">
+          <input type="radio" name="aspectRatio" value="9:16" checked>
+          <span class="aspect-box aspect-vertical" aria-hidden="true"></span>
+          <span data-i18n="aspectVertical">9:16 Vertical (Stories &amp; TikTok)</span>
+        </label>
+        <label class="aspect-option">
+          <input type="radio" name="aspectRatio" value="1:1">
+          <span class="aspect-box aspect-square" aria-hidden="true"></span>
+          <span data-i18n="aspectSquare">1:1 Square (Feed &amp; WhatsApp)</span>
+        </label>
+      </fieldset>
+      <fieldset class="form-group aspect-group style-group">
+        <legend data-i18n="renderStyleLabel">Animation style</legend>
+        <label class="aspect-option">
+          <input type="radio" name="renderStyle" value="real_photo" checked>
+          <span data-i18n="renderStyleRealPhoto">Real Draw / Real Person</span>
+        </label>
+        <label class="aspect-option">
+          <input type="radio" name="renderStyle" value="claymation">
+          <span data-i18n="renderStyleClaymation">3D Cartoon / Claymation</span>
+        </label>
+      </fieldset>
+      <fieldset class="form-group background-group">
+        <legend data-i18n="backgroundLabel">Background</legend>
+        <label class="bg-option">
+          <input type="radio" name="background" value="none" checked>
+          <span class="bg-thumb bg-thumb-none" aria-hidden="true"></span>
+          <span data-i18n="backgroundNone">None (pure white)</span>
+        </label>
+        <label class="bg-option">
+          <input type="radio" name="background" value="stanza_giochi">
+          <img class="bg-thumb" src="./sfondi/stanza-giochi.png" alt="" loading="lazy">
+          <span data-i18n="backgroundPlayroom">Playroom</span>
+        </label>
+        <label class="bg-option">
+          <input type="radio" name="background" value="palco_incantato">
+          <img class="bg-thumb" src="./sfondi/palco-incantato.png" alt="" loading="lazy">
+          <span data-i18n="backgroundEnchanted">Enchanted stage</span>
+        </label>
+        <label class="bg-option">
+          <input type="radio" name="background" value="palco_neon">
+          <img class="bg-thumb" src="./sfondi/palco-neon.png" alt="" loading="lazy">
+          <span data-i18n="backgroundNeon">Neon stage</span>
+        </label>
+      </fieldset>
+      <fieldset class="form-group card-group">
+        <legend data-i18n="cardHeading">Greeting card customization</legend>
+        <div class="card-message-row">
+          <label for="cardMessage" data-i18n="cardMessageLabel">Your message</label>
+          <input type="text" id="cardMessage" maxlength="60" autocomplete="off" placeholder="Happy Birthday!" data-i18n-placeholder="cardMessagePlaceholder">
+        </div>
+        <fieldset class="chip-group" aria-label="Font" data-i18n-aria-label="cardFontLabel">
+          <legend data-i18n="cardFontLabel">Font</legend>
+          <label class="chip chip-font-playful"><input type="radio" name="cardFont" value="playful" checked><span data-i18n="cardFontPlayful">Playful</span></label>
+          <label class="chip chip-font-handwritten"><input type="radio" name="cardFont" value="handwritten"><span data-i18n="cardFontHandwritten">Handwritten</span></label>
+          <label class="chip chip-font-party"><input type="radio" name="cardFont" value="party"><span data-i18n="cardFontParty">Party</span></label>
+          <label class="chip chip-font-cute"><input type="radio" name="cardFont" value="cute"><span data-i18n="cardFontCute">Cute</span></label>
+        </fieldset>
+        <fieldset class="chip-group" aria-label="Frame" data-i18n-aria-label="cardTemplateLabel">
+          <legend data-i18n="cardTemplateLabel">Frame</legend>
+          <label class="chip"><input type="radio" name="cardTemplate" value="classic" checked><span data-i18n="cardTemplateClassic">Classic Clean</span></label>
+          <label class="chip"><input type="radio" name="cardTemplate" value="balloons"><span data-i18n="cardTemplateBalloons">🎈 Birthday Balloons</span></label>
+          <label class="chip"><input type="radio" name="cardTemplate" value="stars"><span data-i18n="cardTemplateStars">⭐ Christmas Stars</span></label>
+          <label class="chip"><input type="radio" name="cardTemplate" value="hearts"><span data-i18n="cardTemplateHearts">💗 Sweet Hearts</span></label>
+        </fieldset>
+        <p class="card-preview-label" data-i18n="cardPreviewLabel">Live card preview</p>
+        <div id="cardPreview" class="card-preview" data-ratio="9:16" data-template="classic" data-font="playful">
+          <span class="card-deco card-deco-left" aria-hidden="true"></span><span class="card-deco card-deco-right" aria-hidden="true"></span>
+          <div class="card-preview-art"><img id="cardPreviewImage" alt="" class="hidden"><span id="cardPreviewEmpty" data-i18n="cardPreviewEmpty">Your drawing will appear here</span></div>
+          <div class="card-preview-banner hidden" id="cardPreviewBanner"></div>
+        </div>
+      </fieldset>
+      <button type="button" id="btnTest" class="btn-secondary" disabled data-i18n="createPreview">✨ Create my animated video</button>
       <p id="testStatus" class="status" role="status" aria-live="polite"></p>
       <div id="generationProgress" class="generation-progress hidden" aria-live="polite">
         <div class="progress-row">
@@ -77,19 +201,36 @@
       <div id="resultBox" class="result-box hidden">
         <div class="video-preview">
           <video id="resultVideo" controls playsinline></video>
-          <span class="video-watermark" aria-hidden="true" data-i18n="previewWatermark">Little Moves · PREVIEW</span>
         </div>
         <section id="offerCard" class="offer-card hidden" aria-labelledby="offerHeading">
           <span class="offer-sparkle" aria-hidden="true">🎁</span>
-          <div class="offer-copy"><span class="offer-label" data-i18n="offerLabel">YOUR ANIMATED CARD IS READY</span><h2 id="offerHeading" data-i18n="offerHeading">Watermark-free download · €2.79</h2><p data-i18n="paymentDescription">One-time purchase, securely verified by LemonSqueezy.</p></div>
-          <button type="button" id="btnCheckout" class="btn-primary" data-i18n="checkoutButton">⬇️ Get your video · €2.79</button>
+          <div class="offer-copy"><span class="offer-label" data-i18n="offerLabel">YOUR ANIMATED CARD IS READY</span><h2 id="offerHeading" data-i18n="offerHeading">Your HD video is ready</h2><p data-i18n="offerDescription">Download it without a watermark. Not happy with the result? Use a free retry on the same drawing.</p></div>
+          <a id="downloadVideo" class="download-video btn-primary hidden" href="#" data-i18n="downloadButton">⬇️ Download HD video</a>
+          <button type="button" id="btnRetry" class="btn-secondary" data-i18n="retryButton">🔄 Regenerate for free (second try)</button>
           <p id="checkoutStatus" class="status" role="status" aria-live="polite"></p>
-          <button type="button" id="btnLocalPayment" class="btn-secondary hidden" data-i18n="simulatePayment">🧪 Simulate local payment</button>
-          <a id="downloadVideo" class="download-video btn-primary hidden" href="#" data-i18n="downloadButton">⬇️ Download without watermark</a>
         </section>
       </div>
     </section>
   </main>
+
+  <dialog id="packagesModal" class="packages-modal" aria-labelledby="packagesHeading">
+    <form method="dialog" class="packages-close"><button type="submit" class="modal-close" aria-label="Close" data-i18n-aria-label="closeLabel">✕</button></form>
+    <h2 id="packagesHeading" data-i18n="packagesHeading">Choose your credit pack</h2>
+    <p class="packages-intro" data-i18n="packagesIntro">Each credit makes one HD video from a drawing. Free retries let you regenerate the same drawing if you're not happy.</p>
+    <div id="packagesGrid" class="packages-grid" role="list"></div>
+    <p id="packagesStatus" class="status" role="status" aria-live="polite"></p>
+    <p class="packages-note" data-i18n="packagesNote">One-time payment, no subscription. Secure checkout by LemonSqueezy.</p>
+    <form method="dialog" class="modal-actions"><button type="submit" id="btnPackagesCancel" class="btn-secondary" data-i18n="checkoutCancel">← Back to Home / Cancel</button></form>
+  </dialog>
+
+  <dialog id="retryModal" class="packages-modal retry-modal" aria-labelledby="retryModalHeading">
+    <h2 id="retryModalHeading" data-i18n="retryModalHeading">Free second try</h2>
+    <p data-i18n="retryModalText">Every video includes a free second chance! Using it will regenerate the video with the exact same parameters and style.</p>
+    <form method="dialog" class="modal-actions">
+      <button type="submit" value="cancel" class="btn-secondary" data-i18n="retryModalCancel">Cancel</button>
+      <button type="submit" value="confirm" id="btnRetryConfirm" class="btn-primary" data-i18n="retryModalConfirm">Regenerate for free</button>
+    </form>
+  </dialog>
 
   <footer><span data-i18n="footer">Made with love for little artists and the people who love them</span> <span aria-label="love" data-i18n-aria-label="loveLabel">💛</span></footer>
 </body>

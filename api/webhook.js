@@ -1,5 +1,7 @@
 const crypto = require('node:crypto');
-const { getVideo, saveVideo } = require('./_lib/store.js');
+const { CURRENCY, getPackage, variantIdFor } = require('./_lib/packages.js');
+const { parseWalletId, grantPackage, revokePackage } = require('./_lib/wallet.js');
+const { recordPaidOrder, markPaymentOrderRefunded } = require('./_lib/orders.js');
 
 const MAX_WEBHOOK_BYTES = 1024 * 1024;
 
@@ -13,7 +15,7 @@ async function readRawBody(req) {
   for await (const chunk of req) {
     size += chunk.length;
     if (size > MAX_WEBHOOK_BYTES) {
-      const error = new Error('Payload webhook troppo grande.');
+      const error = new Error('Webhook payload too large.');
       error.statusCode = 413;
       throw error;
     }
@@ -32,47 +34,61 @@ function validSignature(rawBody, signature, secret) {
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
-    return sendJson(res, 405, { error: 'Metodo non consentito.' });
+    return sendJson(res, 405, { error: 'Method not allowed.' });
   }
   const secret = process.env.LEMON_WEBHOOK_SECRET;
-  const variantId = process.env.LEMONSQUEEZY_VARIANT_ID;
-  if (!secret || !variantId) return sendJson(res, 503, { error: 'Configura LEMON_WEBHOOK_SECRET e LEMONSQUEEZY_VARIANT_ID.' });
+  if (!secret) return sendJson(res, 503, { error: 'Set LEMON_WEBHOOK_SECRET.' });
 
   try {
     const rawBody = await readRawBody(req);
-    if (!validSignature(rawBody, req.headers['x-signature'], secret)) return sendJson(res, 401, { error: 'Firma webhook non valida.' });
+    if (!validSignature(rawBody, req.headers['x-signature'], secret)) return sendJson(res, 401, { error: 'Invalid webhook signature.' });
     let event;
     try {
       event = JSON.parse(rawBody.toString('utf8'));
     } catch {
-      return sendJson(res, 400, { error: 'Payload webhook JSON non valido.' });
+      return sendJson(res, 400, { error: 'Invalid webhook JSON payload.' });
     }
 
     const eventName = event?.meta?.event_name;
-    const token = event?.meta?.custom_data?.generation_id;
     if (!['order_created', 'order_refunded'].includes(eventName)) return sendJson(res, 200, { received: true });
-    if (typeof token !== 'string' || !/^[\da-f-]{36}$/i.test(token)) return sendJson(res, 400, { error: 'Il checkout non contiene un identificativo video valido.' });
-    if (eventName === 'order_created') {
-      const attributes = event?.data?.attributes;
-      const purchasedVariantId = attributes?.first_order_item?.variant_id;
-      if (
-        String(purchasedVariantId) !== String(variantId)
-        || attributes?.status !== 'paid'
-        || String(attributes?.currency || '').toUpperCase() !== 'EUR'
-        || Number(attributes?.total) !== 279
-      ) {
-        return sendJson(res, 400, { error: 'Ordine non pagato o variante LemonSqueezy non corrispondente.' });
-      }
+
+    const pkg = getPackage(event?.meta?.custom_data?.package_id);
+    const orderId = event?.data?.id;
+    if (!pkg || !orderId) return sendJson(res, 400, { error: 'The order has no valid package or order ID.' });
+    const customData = event?.meta?.custom_data;
+    let walletId;
+    try {
+      // `user_uuid` is accepted as an alias of `wallet_id` (the anonymous wallet token created by the browser).
+      walletId = parseWalletId(customData?.wallet_id ?? customData?.user_uuid);
+    } catch {
+      return sendJson(res, 400, { error: 'The order has no valid wallet ID.' });
     }
 
-    const video = await getVideo(token);
-    if (!video?.videoUrl) return sendJson(res, 404, { error: 'Video associato all’ordine non trovato o scaduto.' });
-    await saveVideo(token, { paid: eventName === 'order_created' });
+    if (eventName === 'order_created') {
+      const attributes = event?.data?.attributes;
+      const expectedVariant = variantIdFor(pkg.id);
+      if (
+        !expectedVariant
+        || String(attributes?.first_order_item?.variant_id) !== expectedVariant
+        || attributes?.status !== 'paid'
+        || String(attributes?.currency || '').toUpperCase() !== CURRENCY
+        || Number(attributes?.total) !== pkg.priceCents
+      ) {
+        return sendJson(res, 400, { error: 'Order not paid, or it does not match the package variant, currency or price.' });
+      }
+      const result = await grantPackage(walletId, pkg.id, orderId);
+      await recordPaidOrder({ orderId, walletId, packageId: pkg.id, amountCents: pkg.priceCents, currency: CURRENCY });
+      console.info(`[webhook] Order ${orderId}: package ${pkg.id} ${result.applied ? 'granted' : 'already applied'}.`);
+    } else {
+      const result = await revokePackage(walletId, pkg.id, orderId);
+      await markPaymentOrderRefunded(orderId);
+      console.info(`[webhook] Order ${orderId}: refund ${result.applied ? 'applied' : 'already applied'}.`);
+    }
     return sendJson(res, 200, { received: true });
   } catch (error) {
     if (error.statusCode === 413) return sendJson(res, 413, { error: error.message });
-    console.error('Errore durante la verifica del webhook LemonSqueezy:', error);
-    return sendJson(res, 503, { error: 'Impossibile elaborare il webhook in questo momento.' });
+    console.error('Unable to process the LemonSqueezy webhook:', error);
+    return sendJson(res, 503, { error: 'Unable to process the webhook right now.' });
   }
 };
 

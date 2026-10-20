@@ -1,7 +1,13 @@
 const crypto = require('node:crypto');
-const { consumeGeneration, getVideo, saveVideo } = require('./store.js');
-const { renderLoopVideo } = require('./video-loop.js');
-const { generateVideoFromImage } = require('./fal-video.js');
+const { consumeGeneration, getVideo, saveVideo, walletGet, walletConsume, walletRefund } = require('./store.js');
+const { apiError, parseWalletId } = require('./wallet.js');
+const { renderLoopVideo, addAudioTrack } = require('./video-loop.js');
+const { generateVideoFromImage, buildPrompt } = require('./fal-video.js');
+const { saveImageAsPublicUrl } = require('./image-upload.js');
+const { pickTrack, resolveTrackPath, trackUrl } = require('./music.js');
+const { normalizeAspectRatio } = require('./aspect-ratio.js');
+const { normalizeCard } = require('./card.js');
+const { createOrder, setOrderVideoUrl } = require('./orders.js');
 
 function previewUrl(generationToken) {
   return `/api/preview?id=${encodeURIComponent(generationToken)}`;
@@ -9,14 +15,21 @@ function previewUrl(generationToken) {
 
 async function renderAndSaveVideo(generationToken, sourceVideoUrl) {
   console.info(`[generation:${generationToken}] Kling video ready; starting loop render.`);
-  const generatedVideoPath = await renderLoopVideo(generationToken, sourceVideoUrl);
+  const saved = await getVideo(generationToken);
+  const generatedVideoPath = await renderLoopVideo(generationToken, sourceVideoUrl, saved?.aspectRatio, saved?.card);
   const videoUrl = previewUrl(generationToken);
-  await saveVideo(generationToken, {
-    sourceVideoUrl,
-    generatedVideoPath,
-    videoUrl,
-    generationStatus: 'COMPLETE'
-  });
+  const updates = { sourceVideoUrl, generatedVideoPath, videoUrl, generationStatus: 'COMPLETE' };
+  const audioPath = saved?.audioFile ? resolveTrackPath(saved.audioFile) : null;
+  if (audioPath) {
+    try {
+      updates.downloadVideoPath = await addAudioTrack(generationToken, generatedVideoPath, audioPath);
+    } catch (error) {
+      // The silent video is still delivered if the music merge fails.
+      console.error(`[generation:${generationToken}] Unable to add the music track:`, error.message);
+    }
+  }
+  await saveVideo(generationToken, updates);
+  await setOrderVideoUrl(generationToken, videoUrl).catch((error) => console.error(`[orders] Unable to save the video URL for order ${generationToken}:`, error.message));
   console.info(`[generation:${generationToken}] Loop render complete; preview URL is ready.`);
   return videoUrl;
 }
@@ -27,26 +40,14 @@ function requestError(message, statusCode = 400) {
   return error;
 }
 
+const MAX_IMAGE_DATA_URL_LENGTH = Math.ceil(10 * 1024 * 1024 * 4 / 3) + 64;
+
 function validateImageUrl(value) {
-  if (typeof value !== 'string' || value.length > 2048) {
-    throw requestError('imageUrl deve essere un URL pubblico valido.');
+  if (typeof value !== 'string' || !/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value)
+    || value.length > MAX_IMAGE_DATA_URL_LENGTH) {
+    throw requestError('imageUrl deve essere un’immagine JPG, PNG o WEBP in formato data URI Base64 (max 10 MB).');
   }
-  let imageUrl;
-  try {
-    imageUrl = new URL(value);
-  } catch {
-    throw requestError('imageUrl deve essere un URL pubblico valido.');
-  }
-  if (!['http:', 'https:'].includes(imageUrl.protocol) || imageUrl.username || imageUrl.password) {
-    throw requestError('imageUrl deve usare HTTP o HTTPS ed essere privo di credenziali.');
-  }
-  const host = imageUrl.hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  const isPrivateHost = host === 'localhost' || host.endsWith('.localhost') || host === '::1'
-    || /^(?:127\.|10\.|0\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/.test(host);
-  if (isPrivateHost) {
-    throw requestError('imageUrl non è raggiungibile da Kling: configura BLOB_READ_WRITE_TOKEN o PUBLIC_BASE_URL con un URL pubblico (es. tunnel).');
-  }
-  return imageUrl.href;
+  return value;
 }
 
 function validateMotionPreset(value) {
@@ -173,22 +174,70 @@ async function fetchKling(url, apiKey, options = {}) {
   return parseProviderResponse(response);
 }
 
-const TEST_IMAGE_URL = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&auto=format&fit=crop';
-
-// Dev only: when the supplied image URL is missing or not publicly reachable (e.g. a localhost upload
-// without PUBLIC_BASE_URL/blob storage), fall back to a public test image. Real public URLs are kept.
-function resolveImageUrl(rawImageUrl) {
+async function createDance(payload, clientIp) {
+  const walletId = parseWalletId(payload?.walletId);
+  const kind = await creditKindFor(payload, walletId);
+  const spent = await walletConsume(walletId, kind);
+  if (!spent.ok) {
+    throw kind === 'retry'
+      ? apiError('No free retries left for this drawing.', 402, 'NO_RETRY_CREDITS')
+      : apiError('No video credits left. Buy a credit package to continue.', 402, 'NO_CREDITS');
+  }
+  console.info(`[credits] Wallet ${walletId.slice(0, 8)}…: 1 ${kind} credit used (${spent.mainCredits} main / ${spent.retryCredits} retry left).`);
   try {
-    return validateImageUrl(rawImageUrl);
+    const result = await createDanceInternal(payload, clientIp, { walletId, creditKind: kind });
+    const saved = await getVideo(result.generationToken);
+    return { ...result, audioUrl: trackUrl(saved?.audioFile), creditKind: kind, credits: await walletGet(walletId) };
   } catch (error) {
-    if (process.env.NODE_ENV === 'production') throw error;
-    console.warn(`[kling] Image URL not publicly reachable (${error.message}); using static test image.`);
-    return validateImageUrl(TEST_IMAGE_URL);
+    // The user is never charged for a generation that failed.
+    await walletRefund(walletId, kind).catch((refundError) => console.error('[credits] Refund failed:', refundError));
+    throw error;
   }
 }
 
-async function createDance({ imageUrl: rawImageUrl, motionPreset: rawMotionPreset }, clientIp) {
-  const imageUrl = resolveImageUrl(rawImageUrl);
+// A retry reuses the exact same drawing of a previous generation owned by the same wallet; anything else is a new video.
+async function creditKindFor(payload, walletId) {
+  if (payload.retryOfToken === undefined || payload.retryOfToken === null) return 'main';
+  const previous = typeof payload.retryOfToken === 'string' && /^[\da-f-]{36}$/i.test(payload.retryOfToken)
+    ? await getVideo(payload.retryOfToken)
+    : null;
+  const sameDrawing = previous?.walletId === walletId && previous.imageHash === hashImage(validateImageUrl(payload.imageUrl));
+  if (!sameDrawing) throw apiError('Free retries are only available for the same drawing.', 409, 'RETRY_MISMATCH');
+  return 'retry';
+}
+
+function hashImage(dataUrl) {
+  return crypto.createHash('sha256').update(dataUrl).digest('hex');
+}
+
+const activeGenerations = new Set();
+
+async function failGeneration(generationToken, error, { walletId, creditKind }) {
+  console.error(`[generation:${generationToken}] Background generation failed:`, error?.message, error?.cause ?? '');
+  await saveVideo(generationToken, {
+    generationStatus: 'ERROR',
+    errorMessage: error instanceof Error ? error.message : 'Errore durante la generazione.'
+  }).catch((saveError) => console.error('[generation] Unable to save error state:', saveError));
+  // The user is never charged for a generation that failed.
+  await walletRefund(walletId, creditKind).catch((refundError) => console.error('[credits] Refund failed:', refundError));
+}
+
+async function runFalGeneration(generationToken, imageUrl, motionPreset, options, wallet) {
+  try {
+    const falVideoUrl = await generateVideoFromImage(imageUrl, motionPreset, options);
+    await saveVideo(generationToken, { sourceVideoUrl: falVideoUrl, generationStatus: 'RENDERING' });
+    await renderAndSaveVideo(generationToken, falVideoUrl);
+  } catch (error) {
+    await failGeneration(generationToken, error, wallet);
+  }
+}
+
+async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMotionPreset, aspectRatio: rawAspectRatio, renderStyle: rawRenderStyle, background: rawBackground, card: rawCard, music: rawMusic }, clientIp, { walletId, creditKind }) {
+  const aspectRatio = normalizeAspectRatio(rawAspectRatio);
+  const card = normalizeCard(rawCard);
+  const validatedImage = validateImageUrl(rawImageUrl);
+  const imageHash = hashImage(validatedImage);
+  const imageUrl = await saveImageAsPublicUrl(validatedImage, aspectRatio, typeof rawBackground === 'string' ? rawBackground : null);
   const motionPreset = validateMotionPreset(rawMotionPreset);
   const useFal = Boolean(process.env.FAL_KEY);
   const { endpoint, apiKey } = useFal ? {} : getKlingConfig();
@@ -205,22 +254,52 @@ async function createDance({ imageUrl: rawImageUrl, motionPreset: rawMotionPrese
   }
   const generationToken = crypto.randomUUID();
   console.info(`[generation:${generationToken}] Submitting image-to-video request to Kling.`);
+  const audioFile = pickTrack(rawMusic ?? motionPreset).file;
   await saveVideo(generationToken, {
     motionPreset,
-    sourceImageUrl: imageUrl,
+    aspectRatio,
+    card,
+    walletId,
+    imageHash,
+    creditKind,
+    audioFile,
     generationStatus: 'SUBMITTING',
-    paid: false
+    // The credit has already been spent, so the HD (watermark-free) download is unlocked.
+    paid: true
   });
-  if (useFal) {
-    const falVideoUrl = await generateVideoFromImage(imageUrl, motionPreset);
+  // The order id is the generation token; the exact Fal.ai inputs are kept so a free retry can replay them.
+  await createOrder({
+    orderId: generationToken,
+    params: {
+      prompt: buildPrompt(motionPreset, rawRenderStyle, rawBackground),
+      style: rawRenderStyle ?? null,
+      image: imageUrl,
+      background: rawBackground ?? null,
+      audio: audioFile,
+      motionPreset,
+      aspectRatio,
+      card
+    }
+  }).catch((error) => console.error(`[orders] Unable to create order ${generationToken}:`, error.message));
+  if (useFal && process.env.VERCEL) {
+    // Serverless functions are frozen once the response is sent, so the job must complete within the request.
+    const falVideoUrl = await generateVideoFromImage(imageUrl, motionPreset, { aspectRatio, renderStyle: rawRenderStyle, background: rawBackground });
     await saveVideo(generationToken, { sourceVideoUrl: falVideoUrl, generationStatus: 'RENDERING' });
     const videoUrl = await renderAndSaveVideo(generationToken, falVideoUrl);
     return { generationToken, taskId: null, status: 'COMPLETE', videoUrl, canPoll: false };
   }
+  if (useFal) {
+    // Fal generation takes minutes: run it in the background and let the client poll, so no HTTP request stays open
+    // (tunnels/proxies/browsers drop long-lived requests, which surfaced as "Couldn't reach /api/generate-dance").
+    activeGenerations.add(generationToken);
+    runFalGeneration(generationToken, imageUrl, motionPreset, { aspectRatio, renderStyle: rawRenderStyle, background: rawBackground }, { walletId, creditKind })
+      .finally(() => activeGenerations.delete(generationToken));
+    return { generationToken, taskId: null, status: 'PENDING', canPoll: true };
+  }
   const providerResponse = await fetchKling(endpoint, apiKey, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ imageUrl, motionPreset })
+    body: JSON.stringify({ imageUrl, motionPreset, aspectRatio })
   });
   const normalized = normalizeProviderResult(providerResponse);
   console.info(`[generation:${generationToken}] Kling returned status ${normalized.status}${normalized.taskId ? ` (task ${normalized.taskId})` : ''}.`);
@@ -237,10 +316,8 @@ async function createDance({ imageUrl: rawImageUrl, motionPreset: rawMotionPrese
   await saveVideo(generationToken, {
     taskId: normalized.taskId,
     motionPreset,
-    sourceImageUrl: imageUrl,
     sourceVideoUrl: normalized.videoUrl || null,
-    generationStatus: normalized.videoUrl ? 'RENDERING' : normalized.status,
-    paid: false
+    generationStatus: normalized.videoUrl ? 'RENDERING' : normalized.status
   });
   const videoUrl = normalized.videoUrl
     ? await renderAndSaveVideo(generationToken, normalized.videoUrl)
@@ -255,6 +332,12 @@ async function createDance({ imageUrl: rawImageUrl, motionPreset: rawMotionPrese
 }
 
 async function getDanceStatus(generationToken) {
+  const result = await getDanceStatusInternal(generationToken);
+  const saved = await getVideo(generationToken);
+  return { ...result, audioUrl: trackUrl(saved?.audioFile) };
+}
+
+async function getDanceStatusInternal(generationToken) {
   if (typeof generationToken !== 'string' || !/^[\da-f-]{36}$/i.test(generationToken)) {
     throw requestError('Identificativo della richiesta non valido.');
   }
@@ -265,9 +348,12 @@ async function getDanceStatus(generationToken) {
       generationToken,
       taskId: savedVideo.taskId,
       status: 'ERROR',
-      error: 'Il gateway Kling non è riuscito a generare il video.',
+      error: savedVideo.errorMessage || 'Il gateway Kling non è riuscito a generare il video.',
       canPoll: false
     };
+  }
+  if (activeGenerations.has(generationToken)) {
+    return { generationToken, taskId: null, status: 'PENDING', canPoll: true };
   }
   if (savedVideo.generatedVideoPath && savedVideo.videoUrl) {
     console.info(`[generation:${generationToken}] Returning cached loop preview.`);
@@ -290,7 +376,14 @@ async function getDanceStatus(generationToken) {
       canPoll: false
     };
   }
-  if (!savedVideo.taskId) throw requestError('Task non trovato o non più disponibile.', 404);
+  if (!savedVideo.taskId) {
+    if (savedVideo.generationStatus === 'SUBMITTING' && savedVideo.walletId) {
+      // The server was restarted while the video was being generated: the job is lost.
+      await failGeneration(generationToken, new Error('La generazione è stata interrotta (server riavviato). Riprova: il credito è stato riaccreditato.'), { walletId: savedVideo.walletId, creditKind: savedVideo.creditKind });
+      return { generationToken, taskId: null, status: 'ERROR', error: 'La generazione è stata interrotta (server riavviato). Riprova: il credito è stato riaccreditato.', canPoll: false };
+    }
+    throw requestError('Task non trovato o non più disponibile.', 404);
+  }
 
   const statusEndpoint = getStatusConfig(savedVideo.taskId);
   if (!statusEndpoint) {
@@ -334,4 +427,4 @@ async function getDanceStatus(generationToken) {
   };
 }
 
-module.exports = { createDance, getDanceStatus };
+module.exports = { createDance, getDanceStatus, renderAndSaveVideo };

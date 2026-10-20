@@ -30,14 +30,15 @@ module.exports = async function handler(req, res) {
   } catch (error) {
     const status = error instanceof SyntaxError ? 400
       : Number.isInteger(error.statusCode) ? error.statusCode : 502;
-    if (status >= 500) console.error('Errore API Kling:', error);
+    if (status >= 500) console.error(`[generate-dance] ${req.method} failed (HTTP ${status}):`, error?.message, error?.cause ?? error);
     return sendJson(res, status, {
       error: error instanceof Error ? error.message : 'Errore durante la generazione Kling.',
+      ...(error.code && typeof error.code === 'string' ? { code: error.code } : {}),
       ...(error.quota ? { quota: error.quota } : {})
     });
   }
 };
 
 module.exports.config = {
-  api: { bodyParser: { sizeLimit: '1mb' } }
+  api: { bodyParser: { sizeLimit: '14mb' } }
 };

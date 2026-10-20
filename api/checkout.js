@@ -1,4 +1,5 @@
-const { getVideo } = require('./_lib/store.js');
+const { variantIdFor } = require('./_lib/packages.js');
+const { parseWalletId, requirePackage } = require('./_lib/wallet.js');
 
 function sendJson(res, status, body) {
   return res.status(status).setHeader('Content-Type', 'application/json; charset=utf-8').end(JSON.stringify(body));
@@ -7,24 +8,59 @@ function sendJson(res, status, body) {
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
-    return sendJson(res, 405, { error: 'Metodo non consentito.' });
+    return sendJson(res, 405, { error: 'Method not allowed.' });
   }
-  const checkoutUrl = process.env.LEMON_CHECKOUT_URL;
-  const appUrl = process.env.PUBLIC_BASE_URL || (process.env.NODE_ENV !== 'production' ? `http://${req.headers.host || 'localhost:3000'}` : '');
-  if (!checkoutUrl || !appUrl) return sendJson(res, 503, { error: 'Configura LEMON_CHECKOUT_URL e PUBLIC_BASE_URL per attivare il checkout.' });
-
-  const token = req.body?.generationToken;
-  if (typeof token !== 'string' || !/^[\da-f-]{36}$/i.test(token)) return sendJson(res, 400, { error: 'Identificativo della richiesta non valido.' });
-
   try {
-    const video = await getVideo(token);
-    if (!video?.videoUrl) return sendJson(res, 409, { error: 'Il video non è pronto per il checkout.' });
-    const target = new URL(checkoutUrl);
-    target.searchParams.set('checkout[custom][generation_id]', token);
-    target.searchParams.set('checkout[redirect_url]', `${appUrl.replace(/\/$/, '')}/?purchase=success&id=${encodeURIComponent(token)}`);
-    return sendJson(res, 200, { url: target.href });
+    const walletId = parseWalletId(req.body?.walletId);
+    const pkg = requirePackage(req.body?.packageId);
+    const appUrl = process.env.PUBLIC_BASE_URL || (process.env.NODE_ENV !== 'production' ? `http://${req.headers.host || 'localhost:3000'}` : '');
+    const customData = { wallet_id: walletId, user_uuid: walletId, package_id: pkg.id };
+    const redirectUrl = appUrl ? `${appUrl.replace(/\/$/, '')}/?purchase=success&package=${encodeURIComponent(pkg.id)}` : '';
+    // Preferred: create the checkout from the package Variant ID through the LemonSqueezy API.
+    const apiKey = (process.env.LEMONSQUEEZY_API_KEY || '').trim();
+    const storeId = (process.env.LEMONSQUEEZY_STORE_ID || '').trim();
+    const variantId = variantIdFor(pkg.id);
+    if (apiKey && storeId && variantId) {
+      const response = await fetch('https://api.lemonsqueezy.com/v1/checkouts', {
+        method: 'POST',
+        headers: { Accept: 'application/vnd.api+json', 'Content-Type': 'application/vnd.api+json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          data: {
+            type: 'checkouts',
+            attributes: {
+              checkout_data: { custom: customData },
+              ...(redirectUrl ? { product_options: { redirect_url: redirectUrl } } : {})
+            },
+            relationships: {
+              store: { data: { type: 'stores', id: storeId } },
+              variant: { data: { type: 'variants', id: variantId } }
+            }
+          }
+        }),
+        signal: AbortSignal.timeout(15000)
+      });
+      const payload = await response.json().catch(() => ({}));
+      const url = payload?.data?.attributes?.url;
+      if (!response.ok || !url) {
+        console.error('LemonSqueezy checkout creation failed:', response.status, JSON.stringify(payload).slice(0, 500));
+        return sendJson(res, 502, { error: 'Unable to create the LemonSqueezy checkout right now.', code: 'CHECKOUT_UNAVAILABLE' });
+      }
+      return sendJson(res, 200, { url });
+    }
+    // No fallback to static checkout links: a missing setting must never open a different product.
+    const missing = [
+      !apiKey && 'LEMONSQUEEZY_API_KEY',
+      !storeId && 'LEMONSQUEEZY_STORE_ID',
+      !variantId && `LEMONSQUEEZY_VARIANT_ID_${pkg.id.toUpperCase()}`
+    ].filter(Boolean);
+    console.error(`LemonSqueezy checkout not configured. Missing: ${missing.join(', ')}`);
+    return sendJson(res, 503, {
+      error: `Checkout not configured. Missing: ${missing.join(', ')}.`,
+      code: 'CHECKOUT_UNAVAILABLE'
+    });
   } catch (error) {
-    console.error('Errore durante la preparazione del checkout LemonSqueezy:', error);
-    return sendJson(res, 503, { error: error instanceof Error ? error.message : 'Checkout non disponibile.' });
+    const status = Number.isInteger(error.statusCode) ? error.statusCode : 503;
+    if (status >= 500) console.error('Unable to prepare the LemonSqueezy checkout:', error);
+    return sendJson(res, status, { error: error.message, ...(error.code ? { code: error.code } : {}) });
   }
 };

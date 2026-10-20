@@ -26,11 +26,12 @@ const apiHandlers = new Map([
   ['generate-dance', require('./api/generate-dance.js')],
   ['upload-image', require('./api/upload-image.js')],
   ['checkout', require('./api/checkout.js')],
+  ['credits', require('./api/credits.js')],
   ['payment-status', require('./api/payment-status.js')],
   ['download', require('./api/download.js')],
   ['preview', require('./api/preview.js')],
   ['webhook', require('./api/webhook.js')],
-  ['dev-payment', require('./api/dev-payment.js')],
+  ['retry', require('./api/retry.js')],
   ['test-fal', require('./api/test-fal.js')]
 ]);
 
@@ -173,6 +174,10 @@ const server = http.createServer(async (req, res) => {
     else res.destroy(error);
   }
 });
+
+// A stray error in a background generation must not kill the dev server (that made the browser lose the connection).
+process.on('unhandledRejection', (reason) => console.error('[dev-server] Unhandled rejection:', reason));
+process.on('uncaughtException', (error) => console.error('[dev-server] Uncaught exception:', error));
 
 const port = Number.parseInt(process.env.PORT || '3000', 10);
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
