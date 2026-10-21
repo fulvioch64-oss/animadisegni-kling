@@ -36,21 +36,61 @@ function redisConfig() {
     ['REDIS_URL', fromTcpUrl(process.env.REDIS_URL)],
     ['KV_URL', fromTcpUrl(process.env.KV_URL)]
   ];
-  const found = candidates.find(([, config]) => config?.url && config?.token);
+  const usable = candidates.filter(([, config]) => config?.url && config?.token).map(([name, config]) => ({ name, url: config.url, token: config.token }));
+  redisConfig.all = usable;
+  const found = usable.find((item) => item.name === redisConfig.preferred) || usable[0];
   if (!found) return null;
   if (!redisConfig.logged) {
     redisConfig.logged = true;
-    console.info(`[redis] Using ${found[0]} (${new URL(found[1].url).host}).`);
+    console.info(`[redis] Using ${found.name} (${new URL(found.url).host}).`);
   }
-  return found[1];
+  return found;
+}
+
+// Same-database alternatives (same host, different token), tried only when the current token lacks write permission.
+function alternativeConfigs(current) {
+  const host = new URL(current.url).host;
+  return (redisConfig.all || []).filter((item) => item.name !== current.name && item.token !== current.token && new URL(item.url).host === host);
+}
+
+async function withWriteFallback(run) {
+  const primary = redisConfig();
+  if (!primary) return run(null);
+  try {
+    return await run(primary);
+  } catch (error) {
+    if (!error.noPerm) throw error;
+    for (const alternative of alternativeConfigs(primary)) {
+      try {
+        const result = await run(alternative);
+        redisConfig.preferred = alternative.name;
+        console.info(`[redis] Switched to ${alternative.name}: ${primary.name} has no write permission.`);
+        return result;
+      } catch (alternativeError) {
+        if (!alternativeError.noPerm) throw alternativeError;
+      }
+    }
+    throw error;
+  }
+}
+
+function redisFailure(config, label, detail, status) {
+  const noPerm = /NOPERM/i.test(String(detail));
+  console.error(`[redis] ${label} failed on ${new URL(config.url).host} via ${config.name} (HTTP ${status}, ${noPerm ? 'NOPERM' : /WRONGPASS/i.test(String(detail)) ? 'WRONGPASS' : 'error'}): ${detail}`);
+  let hint = '';
+  if (/WRONGPASS/i.test(String(detail))) hint = ' The Redis token does not match this database: copy the REST token of the same database from the Upstash console and redeploy.';
+  if (noPerm) hint = ' The Redis token has no write permission (read-only token?): use the standard REST token of the database.';
+  const error = new Error(`Archivio Redis non disponibile: ${detail}.${hint}`);
+  error.statusCode = 503;
+  error.noPerm = noPerm;
+  return error;
 }
 
 function localStoreEnabled() {
   return process.env.NODE_ENV !== 'production';
 }
 
-async function redisCommand(command) {
-  const config = redisConfig();
+async function redisCommandWith(command, config) {
   if (!config) {
     const error = new Error('Configura KV_REST_API_URL e KV_REST_API_TOKEN (o le variabili Upstash equivalenti) per archiviare quote e pagamenti.');
     error.statusCode = 503;
@@ -59,23 +99,22 @@ async function redisCommand(command) {
   const response = await fetch(config.url, {
     method: 'POST',
     headers: { authorization: `Bearer ${config.token}`, 'content-type': 'application/json' },
-    body: JSON.stringify(command)
+    body: JSON.stringify(command),
+    signal: AbortSignal.timeout(10000)
   });
-  const result = await response.json();
+  const result = await response.json().catch(() => ({}));
   if (!response.ok || result.error) {
-    const detail = result.error || `HTTP ${response.status}`;
-    console.error(`[redis] Command rejected by ${new URL(config.url).host}: ${detail}`);
-    const hint = /WRONGPASS/i.test(String(detail)) ? ' The Redis token does not match this database: copy the REST token of the same database from the Upstash console and redeploy.' : '';
-    const error = new Error(`Archivio Redis non disponibile: ${detail}.${hint}`);
-    error.statusCode = 503;
-    throw error;
+    throw redisFailure(config, `Command ${String(command[0]).toUpperCase()}`, result.error || `HTTP ${response.status}`, response.status);
   }
   return result.result;
 }
 
+function redisCommand(command) {
+  return withWriteFallback((config) => redisCommandWith(command, config));
+}
+
 // Runs several commands as one atomic MULTI/EXEC transaction through the Upstash REST API (no Lua/EVAL needed).
-async function redisTransaction(commands) {
-  const config = redisConfig();
+async function redisTransactionWith(commands, config) {
   if (!config) {
     const error = new Error('Redis is not configured.');
     error.statusCode = 503;
@@ -84,19 +123,24 @@ async function redisTransaction(commands) {
   const response = await fetch(`${config.url}/multi-exec`, {
     method: 'POST',
     headers: { authorization: `Bearer ${config.token}`, 'content-type': 'application/json' },
-    body: JSON.stringify(commands)
+    body: JSON.stringify(commands),
+    signal: AbortSignal.timeout(10000)
   });
   const results = await response.json().catch(() => null);
-  const detail = !response.ok
-    ? (results?.error || `HTTP ${response.status}`)
-    : (Array.isArray(results) ? results.find((item) => item?.error)?.error : 'Unexpected Redis response');
-  if (detail) {
-    console.error(`[redis] Transaction rejected by ${new URL(config.url).host}: ${detail}`);
-    const error = new Error(`Archivio Redis non disponibile: ${detail}.`);
-    error.statusCode = 503;
-    throw error;
+  // A discarded transaction returns one {error}; otherwise each command reports its own result or error.
+  const names = commands.map((item) => String(item[0]).toUpperCase()).join('+');
+  if (!response.ok || !Array.isArray(results)) {
+    throw redisFailure(config, `Transaction ${names}`, results?.error || `HTTP ${response.status}`, response.status);
+  }
+  const failed = results.findIndex((item) => item?.error);
+  if (failed !== -1 || results.length !== commands.length) {
+    throw redisFailure(config, `Transaction ${names}`, failed !== -1 ? results[failed].error : 'Unexpected response length', response.status);
   }
   return results.map((item) => item.result);
+}
+
+function redisTransaction(commands) {
+  return withWriteFallback((config) => redisTransactionWith(commands, config));
 }
 
 function ttlSeconds(expiration) {
