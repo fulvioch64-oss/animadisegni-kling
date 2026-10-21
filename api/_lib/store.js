@@ -73,6 +73,32 @@ async function redisCommand(command) {
   return result.result;
 }
 
+// Runs several commands as one atomic MULTI/EXEC transaction through the Upstash REST API (no Lua/EVAL needed).
+async function redisTransaction(commands) {
+  const config = redisConfig();
+  if (!config) {
+    const error = new Error('Redis is not configured.');
+    error.statusCode = 503;
+    throw error;
+  }
+  const response = await fetch(`${config.url}/multi-exec`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${config.token}`, 'content-type': 'application/json' },
+    body: JSON.stringify(commands)
+  });
+  const results = await response.json().catch(() => null);
+  const detail = !response.ok
+    ? (results?.error || `HTTP ${response.status}`)
+    : (Array.isArray(results) ? results.find((item) => item?.error)?.error : 'Unexpected Redis response');
+  if (detail) {
+    console.error(`[redis] Transaction rejected by ${new URL(config.url).host}: ${detail}`);
+    const error = new Error(`Archivio Redis non disponibile: ${detail}.`);
+    error.statusCode = 503;
+    throw error;
+  }
+  return results.map((item) => item.result);
+}
+
 function ttlSeconds(expiration) {
   return Math.max(1, Math.ceil((expiration - Date.now()) / 1000));
 }
@@ -88,26 +114,20 @@ async function consumeGeneration(ipAddress) {
   const monthlyTtl = ttlSeconds(monthlyExpiry);
 
   if (redisConfig()) {
-    const script = `
-      local daily = tonumber(redis.call('GET', KEYS[1]) or '0')
-      local monthly = tonumber(redis.call('GET', KEYS[2]) or '0')
-      if daily >= 4 or monthly >= 10 then
-        return {0, daily, monthly}
-      end
-      daily = redis.call('INCR', KEYS[1])
-      monthly = redis.call('INCR', KEYS[2])
-      if daily == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
-      if monthly == 1 then redis.call('EXPIRE', KEYS[2], ARGV[2]) end
-      return {1, daily, monthly}
-    `;
-    const result = await redisCommand([
-      'EVAL', script, 2,
-      `animadisegni:quota:day:${digest}:${day}`,
-      `animadisegni:quota:month:${digest}:${month}`,
-      dailyTtl,
-      monthlyTtl
-    ]);
-    return { allowed: Number(result[0]) === 1, daily: Number(result[1]), monthly: Number(result[2]) };
+    // INCR first, then undo both counters when over the limit: atomic per command, no Lua/EVAL required.
+    const dailyKey = `animadisegni:quota:day:${digest}:${day}`;
+    const monthlyKey = `animadisegni:quota:month:${digest}:${month}`;
+    const [dailyCount, monthlyCount] = (await redisTransaction([
+      ['INCR', dailyKey],
+      ['INCR', monthlyKey],
+      ['EXPIRE', dailyKey, dailyTtl],
+      ['EXPIRE', monthlyKey, monthlyTtl]
+    ])).map(Number);
+    if (dailyCount > 4 || monthlyCount > 10) {
+      await redisTransaction([['DECR', dailyKey], ['DECR', monthlyKey]]);
+      return { allowed: false, daily: dailyCount - 1, monthly: monthlyCount - 1 };
+    }
+    return { allowed: true, daily: dailyCount, monthly: monthlyCount };
   }
 
   if (!localStoreEnabled()) {
@@ -156,7 +176,7 @@ async function saveVideo(token, updates) {
 
 // ---- Credit wallets ----
 // A wallet holds two counters: main (new videos) and retry (free regenerations of the same drawing).
-// Redis operations are atomic Lua scripts; the in-memory fallback (local dev only) never awaits between read and write.
+// Redis operations use only plain commands (SET NX, HINCRBY, INCR) and MULTI/EXEC: no EVAL, which restricted Upstash tokens reject.
 const memoryWallets = new Map();
 const memoryOrderKeys = new Set();
 const WALLET_COUNTERS = { main: 0, retry: 1 };
@@ -166,7 +186,7 @@ function walletKey(walletId) {
 }
 
 function toBalance(main, retry) {
-  return { mainCredits: Number(main) || 0, retryCredits: Number(retry) || 0 };
+  return { mainCredits: Math.max(0, Number(main) || 0), retryCredits: Math.max(0, Number(retry) || 0) };
 }
 
 function requireWalletStore() {
@@ -191,20 +211,35 @@ async function walletGet(walletId) {
 // Adds (or, with negative deltas, removes) credits once per dedupeKey, e.g. "order:<id>". Balances never go below 0.
 async function walletAdjust(walletId, dedupeKey, mainDelta, retryDelta) {
   if (requireWalletStore()) {
-    const script = `
-      if redis.call('SET', KEYS[2], '1', 'NX') == false then
-        local m = redis.call('HMGET', KEYS[1], 'main', 'retry')
-        return {0, tonumber(m[1] or '0'), tonumber(m[2] or '0')}
-      end
-      local main = math.max(0, tonumber(redis.call('HGET', KEYS[1], 'main') or '0') + tonumber(ARGV[1]))
-      local retry = math.max(0, tonumber(redis.call('HGET', KEYS[1], 'retry') or '0') + tonumber(ARGV[2]))
-      redis.call('HSET', KEYS[1], 'main', main, 'retry', retry)
-      return {1, main, retry}
-    `;
-    const [applied, main, retry] = await redisCommand([
-      'EVAL', script, 2, walletKey(walletId), `animadisegni:wallet-event:${dedupeKey}`, mainDelta, retryDelta
+    const marker = `animadisegni:wallet-event:${dedupeKey}`;
+    const key = walletKey(walletId);
+    // 1) Claim the event with SET NX (short TTL, so a crashed attempt can be retried).
+    const claimed = await redisCommand(['SET', marker, 'pending', 'NX', 'EX', 60]);
+    if (claimed !== 'OK') {
+      const state = await redisCommand(['GET', marker]);
+      if (state !== 'done') {
+        const error = new Error('This event is already being processed; retry shortly.');
+        error.statusCode = 503;
+        throw error;
+      }
+      const [main, retry] = await redisCommand(['HMGET', key, 'main', 'retry']);
+      return { applied: false, ...toBalance(main, retry) };
+    }
+    // 2) Apply both counters and mark the event as done in a single atomic transaction.
+    // If it fails, the marker stays "pending" and expires, so the provider's retry applies the credits once.
+    const results = await redisTransaction([
+      ['HINCRBY', key, 'main', String(mainDelta)],
+      ['HINCRBY', key, 'retry', String(retryDelta)],
+      ['SET', marker, 'done']
     ]);
-    return { applied: Number(applied) === 1, ...toBalance(main, retry) };
+    let main = Number(results[0]);
+    let retry = Number(results[1]);
+    if (main < 0 || retry < 0) {
+      main = Math.max(0, main);
+      retry = Math.max(0, retry);
+      await redisCommand(['HSET', key, 'main', String(main), 'retry', String(retry)]);
+    }
+    return { applied: true, ...toBalance(main, retry) };
   }
   const wallet = memoryWallets.get(walletId) || { main: 0, retry: 0 };
   if (memoryOrderKeys.has(dedupeKey)) return { applied: false, ...toBalance(wallet.main, wallet.retry) };
@@ -219,18 +254,13 @@ async function walletAdjust(walletId, dedupeKey, mainDelta, retryDelta) {
 async function walletConsume(walletId, kind) {
   if (!Object.hasOwn(WALLET_COUNTERS, kind)) throw new Error(`Unknown credit kind: ${kind}`);
   if (requireWalletStore()) {
-    const script = `
-      local value = tonumber(redis.call('HGET', KEYS[1], ARGV[1]) or '0')
-      if value <= 0 then
-        local m = redis.call('HMGET', KEYS[1], 'main', 'retry')
-        return {0, tonumber(m[1] or '0'), tonumber(m[2] or '0')}
-      end
-      redis.call('HINCRBY', KEYS[1], ARGV[1], -1)
-      local m = redis.call('HMGET', KEYS[1], 'main', 'retry')
-      return {1, tonumber(m[1] or '0'), tonumber(m[2] or '0')}
-    `;
-    const [ok, main, retry] = await redisCommand(['EVAL', script, 1, walletKey(walletId), kind]);
-    return { ok: Number(ok) === 1, ...toBalance(main, retry) };
+    // HINCRBY is atomic: a result below zero means the balance was empty, so the decrement is undone.
+    const key = walletKey(walletId);
+    const after = Number(await redisCommand(['HINCRBY', key, kind, -1]));
+    const ok = after >= 0;
+    if (!ok) await redisCommand(['HINCRBY', key, kind, 1]);
+    const [main, retry] = await redisCommand(['HMGET', key, 'main', 'retry']);
+    return { ok, ...toBalance(main, retry) };
   }
   const wallet = memoryWallets.get(walletId) || { main: 0, retry: 0 };
   if (wallet[kind] <= 0) return { ok: false, ...toBalance(wallet.main, wallet.retry) };
