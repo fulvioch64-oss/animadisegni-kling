@@ -1,369 +1,552 @@
+
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { Pool } = require('pg');
 
-const localEnvFiles = ['.env.local', '.env']
+const envFiles = ['.env.local', '.env']
   .map((name) => path.resolve(__dirname, '..', '..', name))
-  .filter((envPath) => fs.existsSync(envPath));
-if (localEnvFiles.length) require('dotenv').config({ path: localEnvFiles });
+  .filter((file) => fs.existsSync(file));
 
-const memory = new Map();
-const memoryCounters = new Map();
+if (envFiles.length) {
+  require('dotenv').config({ path: envFiles });
+}
+
 const VIDEO_TTL_SECONDS = 30 * 24 * 60 * 60;
 
-function redisConfig() {
-  const clean = (value) => (typeof value === 'string' ? value.trim().replace(/^["']|["']$/g, '') : '');
-  // Accepts a bare host ("xyz.upstash.io") as well as a full URL.
-  const restUrl = (value) => {
-    const cleaned = clean(value);
-    if (!cleaned) return '';
-    return (/^https?:\/\//i.test(cleaned) ? cleaned : `https://${cleaned}`).replace(/\/+$/, '');
-  };
-  // Upstash TCP URLs (rediss://default:<token>@host:6379) carry the same token as the REST API, with the same host.
-  const fromTcpUrl = (value) => {
-    try {
-      const parsed = new URL(clean(value));
-      if (!/^rediss?:$/.test(parsed.protocol) || !parsed.password) return null;
-      return { url: `https://${parsed.hostname}`, token: decodeURIComponent(parsed.password) };
-    } catch {
-      return null;
-    }
-  };
-  // URL and token always come from the same source, so stale values from one provider never mix with another's.
-  const candidates = [
-    ['UPSTASH_REDIS_REST_*', { url: restUrl(process.env.UPSTASH_REDIS_REST_URL), token: clean(process.env.UPSTASH_REDIS_REST_TOKEN) }],
-    ['KV_REST_API_*', { url: restUrl(process.env.KV_REST_API_URL), token: clean(process.env.KV_REST_API_TOKEN) }],
-    ['REDIS_URL', fromTcpUrl(process.env.REDIS_URL)],
-    ['KV_URL', fromTcpUrl(process.env.KV_URL)]
-  ];
-  const usable = candidates.filter(([, config]) => config?.url && config?.token).map(([name, config]) => ({ name, url: config.url, token: config.token }));
-  redisConfig.all = usable;
-  const found = usable.find((item) => item.name === redisConfig.preferred) || usable[0];
-  if (!found) return null;
-  if (!redisConfig.logged) {
-    redisConfig.logged = true;
-    console.info(`[redis] Using ${found.name} (${new URL(found.url).host}).`);
-  }
-  return found;
-}
+let pool;
 
-// Same-database alternatives (same host, different token), tried only when the current token lacks write permission.
-function alternativeConfigs(current) {
-  const host = new URL(current.url).host;
-  return (redisConfig.all || []).filter((item) => item.name !== current.name && item.token !== current.token && new URL(item.url).host === host);
-}
+function getPool() {
+  if (pool) return pool;
 
-async function withWriteFallback(run) {
-  const primary = redisConfig();
-  if (!primary) return run(null);
-  try {
-    return await run(primary);
-  } catch (error) {
-    if (!error.noPerm) throw error;
-    for (const alternative of alternativeConfigs(primary)) {
-      try {
-        const result = await run(alternative);
-        redisConfig.preferred = alternative.name;
-        console.info(`[redis] Switched to ${alternative.name}: ${primary.name} has no write permission.`);
-        return result;
-      } catch (alternativeError) {
-        if (!alternativeError.noPerm) throw alternativeError;
-      }
-    }
+  const connectionString =
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL_NON_POOLING;
+
+  if (!connectionString) {
+    const error = new Error(
+      'PostgreSQL non configurato: manca POSTGRES_URL.'
+    );
+    error.statusCode = 503;
     throw error;
   }
+
+  pool = new Pool({
+    connectionString,
+    ssl: connectionString.includes('localhost')
+      ? false
+      : { rejectUnauthorized: false },
+    max: 5,
+    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: 10000,
+  });
+
+  pool.on('error', (error) => {
+    console.error('[postgres] Errore pool:', error.message);
+  });
+
+  return pool;
 }
 
-function redisFailure(config, label, detail, status) {
-  const noPerm = /NOPERM/i.test(String(detail));
-  console.error(`[redis] ${label} failed on ${new URL(config.url).host} via ${config.name} (HTTP ${status}, ${noPerm ? 'NOPERM' : /WRONGPASS/i.test(String(detail)) ? 'WRONGPASS' : 'error'}): ${detail}`);
-  let hint = '';
-  if (/WRONGPASS/i.test(String(detail))) hint = ' The Redis token does not match this database: copy the REST token of the same database from the Upstash console and redeploy.';
-  if (noPerm) hint = ' The Redis token has no write permission (read-only token?): use the standard REST token of the database.';
-  const error = new Error(`Archivio Redis non disponibile: ${detail}.${hint}`);
-  error.statusCode = 503;
-  error.noPerm = noPerm;
-  return error;
-}
-
-function localStoreEnabled() {
+function localMode() {
   return process.env.NODE_ENV !== 'production';
 }
 
-async function redisCommandWith(command, config) {
-  if (!config) {
-    const error = new Error('Configura KV_REST_API_URL e KV_REST_API_TOKEN (o le variabili Upstash equivalenti) per archiviare quote e pagamenti.');
+function useDatabase() {
+  const configured = Boolean(
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL_NON_POOLING
+  );
+
+  if (!configured && !localMode()) {
+    const error = new Error(
+      'PostgreSQL richiesto in produzione. Configura POSTGRES_URL.'
+    );
     error.statusCode = 503;
     throw error;
   }
-  const response = await fetch(config.url, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${config.token}`, 'content-type': 'application/json' },
-    body: JSON.stringify(command),
-    signal: AbortSignal.timeout(10000)
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok || result.error) {
-    throw redisFailure(config, `Command ${String(command[0]).toUpperCase()}`, result.error || `HTTP ${response.status}`, response.status);
-  }
-  return result.result;
+
+  return configured;
 }
 
-function redisCommand(command) {
-  return withWriteFallback((config) => redisCommandWith(command, config));
-}
+const memoryVideos = new Map();
+const memoryCounters = new Map();
+const memoryWallets = new Map();
+const memoryEvents = new Set();
+const memoryRecords = new Map();
+const memoryLocks = new Map();
 
-// Runs several commands as one atomic MULTI/EXEC transaction through the Upstash REST API (no Lua/EVAL needed).
-async function redisTransactionWith(commands, config) {
-  if (!config) {
-    const error = new Error('Redis is not configured.');
-    error.statusCode = 503;
-    throw error;
-  }
-  const response = await fetch(`${config.url}/multi-exec`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${config.token}`, 'content-type': 'application/json' },
-    body: JSON.stringify(commands),
-    signal: AbortSignal.timeout(10000)
-  });
-  const results = await response.json().catch(() => null);
-  // A discarded transaction returns one {error}; otherwise each command reports its own result or error.
-  const names = commands.map((item) => String(item[0]).toUpperCase()).join('+');
-  if (!response.ok || !Array.isArray(results)) {
-    throw redisFailure(config, `Transaction ${names}`, results?.error || `HTTP ${response.status}`, response.status);
-  }
-  const failed = results.findIndex((item) => item?.error);
-  if (failed !== -1 || results.length !== commands.length) {
-    throw redisFailure(config, `Transaction ${names}`, failed !== -1 ? results[failed].error : 'Unexpected response length', response.status);
-  }
-  return results.map((item) => item.result);
-}
-
-function redisTransaction(commands) {
-  return withWriteFallback((config) => redisTransactionWith(commands, config));
-}
-
-function ttlSeconds(expiration) {
-  return Math.max(1, Math.ceil((expiration - Date.now()) / 1000));
+function balance(main, retry) {
+  return {
+    mainCredits: Math.max(0, Number(main) || 0),
+    retryCredits: Math.max(0, Number(retry) || 0),
+  };
 }
 
 async function consumeGeneration(ipAddress) {
-  const digest = crypto.createHash('sha256').update(ipAddress).digest('hex');
+  const digest = crypto
+    .createHash('sha256')
+    .update(String(ipAddress || 'unknown'))
+    .digest('hex');
+
   const now = new Date();
-  const dailyExpiry = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
-  const monthlyExpiry = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
-  const day = `${now.toISOString().slice(0, 10)}`;
-  const month = `${now.toISOString().slice(0, 7)}`;
-  const dailyTtl = ttlSeconds(dailyExpiry);
-  const monthlyTtl = ttlSeconds(monthlyExpiry);
+  const day = now.toISOString().slice(0, 10);
+  const month = now.toISOString().slice(0, 7);
 
-  if (redisConfig()) {
-    // INCR first, then undo both counters when over the limit: atomic per command, no Lua/EVAL required.
-    const dailyKey = `animadisegni:quota:day:${digest}:${day}`;
-    const monthlyKey = `animadisegni:quota:month:${digest}:${month}`;
-    const [dailyCount, monthlyCount] = (await redisTransaction([
-      ['INCR', dailyKey],
-      ['INCR', monthlyKey],
-      ['EXPIRE', dailyKey, dailyTtl],
-      ['EXPIRE', monthlyKey, monthlyTtl]
-    ])).map(Number);
-    if (dailyCount > 4 || monthlyCount > 10) {
-      await redisTransaction([['DECR', dailyKey], ['DECR', monthlyKey]]);
-      return { allowed: false, daily: dailyCount - 1, monthly: monthlyCount - 1 };
+  const dayExpiry = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() + 1
+  ));
+
+  const monthExpiry = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth() + 1,
+    1
+  ));
+
+  if (!useDatabase()) {
+    const dayKey = `${digest}:${day}`;
+    const monthKey = `${digest}:${month}`;
+    const daily = memoryCounters.get(dayKey) || 0;
+    const monthly = memoryCounters.get(monthKey) || 0;
+
+    if (daily >= 4 || monthly >= 10) {
+      return { allowed: false, daily, monthly };
     }
-    return { allowed: true, daily: dailyCount, monthly: monthlyCount };
+
+    memoryCounters.set(dayKey, daily + 1);
+    memoryCounters.set(monthKey, monthly + 1);
+
+    return {
+      allowed: true,
+      daily: daily + 1,
+      monthly: monthly + 1,
+    };
   }
 
-  if (!localStoreEnabled()) {
-    const error = new Error('Archivio Redis richiesto in produzione per applicare i limiti in modo persistente.');
-    error.statusCode = 503;
+  const client = await getPool().connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const dayKey = `day:${digest}:${day}`;
+    const monthKey = `month:${digest}:${month}`;
+
+    const dailyResult = await client.query(
+      `INSERT INTO quota_counters
+         (counter_key, counter_value, expires_at)
+       VALUES ($1, 1, $2)
+       ON CONFLICT (counter_key)
+       DO UPDATE SET
+         counter_value = quota_counters.counter_value + 1,
+         expires_at = EXCLUDED.expires_at
+       RETURNING counter_value`,
+      [dayKey, dayExpiry]
+    );
+
+    const monthlyResult = await client.query(
+      `INSERT INTO quota_counters
+         (counter_key, counter_value, expires_at)
+       VALUES ($1, 1, $2)
+       ON CONFLICT (counter_key)
+       DO UPDATE SET
+         counter_value = quota_counters.counter_value + 1,
+         expires_at = EXCLUDED.expires_at
+       RETURNING counter_value`,
+      [monthKey, monthExpiry]
+    );
+
+    let daily = Number(dailyResult.rows[0].counter_value);
+    let monthly = Number(monthlyResult.rows[0].counter_value);
+
+    if (daily > 4 || monthly > 10) {
+      await client.query(
+        `UPDATE quota_counters
+         SET counter_value = GREATEST(0, counter_value - 1)
+         WHERE counter_key = ANY($1::text[])`,
+        [[dayKey, monthKey]]
+      );
+
+      daily = Math.max(0, daily - 1);
+      monthly = Math.max(0, monthly - 1);
+
+      await client.query('COMMIT');
+      return { allowed: false, daily, monthly };
+    }
+
+    await client.query('COMMIT');
+    return { allowed: true, daily, monthly };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
     throw error;
+  } finally {
+    client.release();
   }
-  const dailyKey = `${digest}:${day}`;
-  const monthlyKey = `${digest}:${month}`;
-  const daily = memoryCounters.get(dailyKey) || 0;
-  const monthly = memoryCounters.get(monthlyKey) || 0;
-  if (daily >= 4 || monthly >= 10) return { allowed: false, daily, monthly };
-  memoryCounters.set(dailyKey, daily + 1);
-  memoryCounters.set(monthlyKey, monthly + 1);
-  return { allowed: true, daily: daily + 1, monthly: monthly + 1 };
 }
 
 async function getVideo(token) {
-  if (redisConfig()) {
-    const value = await redisCommand(['GET', `animadisegni:video:${token}`]);
-    return value ? JSON.parse(value) : null;
+  if (!useDatabase()) {
+    return memoryVideos.get(token) || null;
   }
-  if (!localStoreEnabled()) {
-    const error = new Error('Archivio Redis richiesto in produzione per verificare i pagamenti.');
-    error.statusCode = 503;
-    throw error;
-  }
-  return memory.get(token) || null;
+
+  const result = await getPool().query(
+    `SELECT record_value
+     FROM app_records
+     WHERE record_key = $1
+       AND (expires_at IS NULL OR expires_at > NOW())`,
+    [`animadisegni:video:${token}`]
+  );
+
+  return result.rows[0]?.record_value ?? null;
 }
 
 async function saveVideo(token, updates) {
   const previous = await getVideo(token);
-  const video = { ...previous, ...updates, updatedAt: Date.now() };
-  if (redisConfig()) {
-    await redisCommand(['SET', `animadisegni:video:${token}`, JSON.stringify(video), 'EX', VIDEO_TTL_SECONDS]);
-  } else {
-    if (!localStoreEnabled()) {
-      const error = new Error('Archivio Redis richiesto in produzione per salvare i video.');
-      error.statusCode = 503;
-      throw error;
-    }
-    memory.set(token, video);
+  const video = {
+    ...(previous || {}),
+    ...updates,
+    updatedAt: Date.now(),
+  };
+
+  if (!useDatabase()) {
+    memoryVideos.set(token, video);
+    return video;
   }
+
+  await getPool().query(
+    `INSERT INTO app_records
+       (record_key, record_value, updated_at, expires_at)
+     VALUES (
+       $1, $2::jsonb, NOW(),
+       NOW() + ($3 * INTERVAL '1 second')
+     )
+     ON CONFLICT (record_key)
+     DO UPDATE SET
+       record_value = EXCLUDED.record_value,
+       updated_at = NOW(),
+       expires_at = EXCLUDED.expires_at`,
+    [
+      `animadisegni:video:${token}`,
+      JSON.stringify(video),
+      VIDEO_TTL_SECONDS,
+    ]
+  );
+
   return video;
 }
 
-// ---- Credit wallets ----
-// A wallet holds two counters: main (new videos) and retry (free regenerations of the same drawing).
-// Redis operations use only plain commands (SET NX, HINCRBY, INCR) and MULTI/EXEC: no EVAL, which restricted Upstash tokens reject.
-const memoryWallets = new Map();
-const memoryOrderKeys = new Set();
-const WALLET_COUNTERS = { main: 0, retry: 1 };
-
-function walletKey(walletId) {
-  return `animadisegni:wallet:${walletId}`;
-}
-
-function toBalance(main, retry) {
-  return { mainCredits: Math.max(0, Number(main) || 0), retryCredits: Math.max(0, Number(retry) || 0) };
-}
-
-function requireWalletStore() {
-  if (redisConfig()) return true;
-  if (!localStoreEnabled()) {
-    const error = new Error('A Redis store is required in production to keep credit balances. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN (or KV_REST_API_URL and KV_REST_API_TOKEN) for this Vercel environment, then redeploy.');
-    error.statusCode = 503;
-    throw error;
-  }
-  return false;
+async function ensureWallet(client, walletId) {
+  await client.query(
+    `INSERT INTO wallets (wallet_id)
+     VALUES ($1)
+     ON CONFLICT (wallet_id) DO NOTHING`,
+    [walletId]
+  );
 }
 
 async function walletGet(walletId) {
-  if (requireWalletStore()) {
-    const [main, retry] = await redisCommand(['HMGET', walletKey(walletId), 'main', 'retry']);
-    return toBalance(main, retry);
+  if (!useDatabase()) {
+    const wallet = memoryWallets.get(walletId) || {
+      main: 0,
+      retry: 0,
+    };
+
+    return balance(wallet.main, wallet.retry);
   }
-  const wallet = memoryWallets.get(walletId) || { main: 0, retry: 0 };
-  return toBalance(wallet.main, wallet.retry);
+
+  const result = await getPool().query(
+    `SELECT main_credits, retry_credits
+     FROM wallets
+     WHERE wallet_id = $1`,
+    [walletId]
+  );
+
+  const row = result.rows[0];
+  return balance(row?.main_credits, row?.retry_credits);
 }
 
-// Adds (or, with negative deltas, removes) credits once per dedupeKey, e.g. "order:<id>". Balances never go below 0.
 async function walletAdjust(walletId, dedupeKey, mainDelta, retryDelta) {
-  if (requireWalletStore()) {
-    const marker = `animadisegni:wallet-event:${dedupeKey}`;
-    const key = walletKey(walletId);
-    // 1) Claim the event with SET NX (short TTL, so a crashed attempt can be retried).
-    const claimed = await redisCommand(['SET', marker, 'pending', 'NX', 'EX', 60]);
-    if (claimed !== 'OK') {
-      const state = await redisCommand(['GET', marker]);
-      if (state !== 'done') {
-        const error = new Error('This event is already being processed; retry shortly.');
-        error.statusCode = 503;
-        throw error;
-      }
-      const [main, retry] = await redisCommand(['HMGET', key, 'main', 'retry']);
-      return { applied: false, ...toBalance(main, retry) };
+  if (!useDatabase()) {
+    const wallet = memoryWallets.get(walletId) || {
+      main: 0,
+      retry: 0,
+    };
+
+    if (memoryEvents.has(dedupeKey)) {
+      return {
+        applied: false,
+        ...balance(wallet.main, wallet.retry),
+      };
     }
-    // 2) Apply both counters and mark the event as done in a single atomic transaction.
-    // If it fails, the marker stays "pending" and expires, so the provider's retry applies the credits once.
-    const results = await redisTransaction([
-      ['HINCRBY', key, 'main', String(mainDelta)],
-      ['HINCRBY', key, 'retry', String(retryDelta)],
-      ['SET', marker, 'done']
-    ]);
-    let main = Number(results[0]);
-    let retry = Number(results[1]);
-    if (main < 0 || retry < 0) {
-      main = Math.max(0, main);
-      retry = Math.max(0, retry);
-      await redisCommand(['HSET', key, 'main', String(main), 'retry', String(retry)]);
-    }
-    return { applied: true, ...toBalance(main, retry) };
+
+    memoryEvents.add(dedupeKey);
+    wallet.main = Math.max(0, wallet.main + Number(mainDelta));
+    wallet.retry = Math.max(0, wallet.retry + Number(retryDelta));
+    memoryWallets.set(walletId, wallet);
+
+    return {
+      applied: true,
+      ...balance(wallet.main, wallet.retry),
+    };
   }
-  const wallet = memoryWallets.get(walletId) || { main: 0, retry: 0 };
-  if (memoryOrderKeys.has(dedupeKey)) return { applied: false, ...toBalance(wallet.main, wallet.retry) };
-  memoryOrderKeys.add(dedupeKey);
-  wallet.main = Math.max(0, wallet.main + mainDelta);
-  wallet.retry = Math.max(0, wallet.retry + retryDelta);
-  memoryWallets.set(walletId, wallet);
-  return { applied: true, ...toBalance(wallet.main, wallet.retry) };
+
+  const client = await getPool().connect();
+
+  try {
+    await client.query('BEGIN');
+    await ensureWallet(client, walletId);
+
+    const eventKey = `animadisegni:wallet-event:${dedupeKey}`;
+
+    const inserted = await client.query(
+      `INSERT INTO wallet_events
+         (event_key, wallet_id, main_delta, retry_delta)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (event_key) DO NOTHING
+       RETURNING event_key`,
+      [eventKey, walletId, mainDelta, retryDelta]
+    );
+
+    if (inserted.rowCount > 0) {
+      await client.query(
+        `UPDATE wallets
+         SET main_credits =
+               GREATEST(0, main_credits + $2),
+             retry_credits =
+               GREATEST(0, retry_credits + $3),
+             updated_at = NOW()
+         WHERE wallet_id = $1`,
+        [walletId, mainDelta, retryDelta]
+      );
+    }
+
+    const result = await client.query(
+      `SELECT main_credits, retry_credits
+       FROM wallets
+       WHERE wallet_id = $1`,
+      [walletId]
+    );
+
+    await client.query('COMMIT');
+
+    return {
+      applied: inserted.rowCount > 0,
+      ...balance(
+        result.rows[0].main_credits,
+        result.rows[0].retry_credits
+      ),
+    };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
-// Spends one credit of the given kind ('main' | 'retry'). Returns { ok: false } when none is left.
 async function walletConsume(walletId, kind) {
-  if (!Object.hasOwn(WALLET_COUNTERS, kind)) throw new Error(`Unknown credit kind: ${kind}`);
-  if (requireWalletStore()) {
-    // HINCRBY is atomic: a result below zero means the balance was empty, so the decrement is undone.
-    const key = walletKey(walletId);
-    const after = Number(await redisCommand(['HINCRBY', key, kind, -1]));
-    const ok = after >= 0;
-    if (!ok) await redisCommand(['HINCRBY', key, kind, 1]);
-    const [main, retry] = await redisCommand(['HMGET', key, 'main', 'retry']);
-    return { ok, ...toBalance(main, retry) };
+  if (!['main', 'retry'].includes(kind)) {
+    throw new Error(`Unknown credit kind: ${kind}`);
   }
-  const wallet = memoryWallets.get(walletId) || { main: 0, retry: 0 };
-  if (wallet[kind] <= 0) return { ok: false, ...toBalance(wallet.main, wallet.retry) };
-  wallet[kind] -= 1;
-  memoryWallets.set(walletId, wallet);
-  return { ok: true, ...toBalance(wallet.main, wallet.retry) };
+
+  if (!useDatabase()) {
+    const wallet = memoryWallets.get(walletId) || {
+      main: 0,
+      retry: 0,
+    };
+
+    if (wallet[kind] <= 0) {
+      return {
+        ok: false,
+        ...balance(wallet.main, wallet.retry),
+      };
+    }
+
+    wallet[kind] -= 1;
+    memoryWallets.set(walletId, wallet);
+
+    return {
+      ok: true,
+      ...balance(wallet.main, wallet.retry),
+    };
+  }
+
+  const column = kind === 'main'
+    ? 'main_credits'
+    : 'retry_credits';
+
+  const client = await getPool().connect();
+
+  try {
+    await client.query('BEGIN');
+    await ensureWallet(client, walletId);
+
+    const changed = await client.query(
+      `UPDATE wallets
+       SET ${column} = ${column} - 1,
+           updated_at = NOW()
+       WHERE wallet_id = $1 AND ${column} > 0
+       RETURNING main_credits, retry_credits`,
+      [walletId]
+    );
+
+    const result = changed.rows[0]
+      ? changed
+      : await client.query(
+          `SELECT main_credits, retry_credits
+           FROM wallets WHERE wallet_id = $1`,
+          [walletId]
+        );
+
+    await client.query('COMMIT');
+
+    return {
+      ok: changed.rowCount > 0,
+      ...balance(
+        result.rows[0].main_credits,
+        result.rows[0].retry_credits
+      ),
+    };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function walletRefund(walletId, kind) {
-  if (!Object.hasOwn(WALLET_COUNTERS, kind)) throw new Error(`Unknown credit kind: ${kind}`);
-  if (requireWalletStore()) {
-    await redisCommand(['HINCRBY', walletKey(walletId), kind, 1]);
+  if (!['main', 'retry'].includes(kind)) {
+    throw new Error(`Unknown credit kind: ${kind}`);
+  }
+
+  if (!useDatabase()) {
+    const wallet = memoryWallets.get(walletId) || {
+      main: 0,
+      retry: 0,
+    };
+
+    wallet[kind] += 1;
+    memoryWallets.set(walletId, wallet);
     return;
   }
-  const wallet = memoryWallets.get(walletId) || { main: 0, retry: 0 };
-  wallet[kind] += 1;
-  memoryWallets.set(walletId, wallet);
+
+  const column = kind === 'main'
+    ? 'main_credits'
+    : 'retry_credits';
+
+  const client = await getPool().connect();
+
+  try {
+    await client.query('BEGIN');
+    await ensureWallet(client, walletId);
+
+    await client.query(
+      `UPDATE wallets
+       SET ${column} = ${column} + 1,
+           updated_at = NOW()
+       WHERE wallet_id = $1`,
+      [walletId]
+    );
+
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
-// ---- Generic JSON records (used by orders) and short-lived locks ----
-const memoryRecords = new Map();
-const memoryLocks = new Map();
-
 async function getRecord(key) {
-  if (redisConfig()) {
-    const value = await redisCommand(['GET', key]);
-    return value ? JSON.parse(value) : null;
+  if (!useDatabase()) {
+    return memoryRecords.has(key)
+      ? structuredClone(memoryRecords.get(key))
+      : null;
   }
-  requireWalletStore();
-  return memoryRecords.has(key) ? structuredClone(memoryRecords.get(key)) : null;
+
+  const result = await getPool().query(
+    `SELECT record_value
+     FROM app_records
+     WHERE record_key = $1
+       AND (expires_at IS NULL OR expires_at > NOW())`,
+    [key]
+  );
+
+  return result.rows[0]?.record_value ?? null;
 }
 
 async function setRecord(key, value) {
-  if (redisConfig()) {
-    await redisCommand(['SET', key, JSON.stringify(value)]);
+  if (!useDatabase()) {
+    memoryRecords.set(key, structuredClone(value));
     return;
   }
-  requireWalletStore();
-  memoryRecords.set(key, structuredClone(value));
+
+  await getPool().query(
+    `INSERT INTO app_records
+       (record_key, record_value, updated_at, expires_at)
+     VALUES ($1, $2::jsonb, NOW(), NULL)
+     ON CONFLICT (record_key)
+     DO UPDATE SET
+       record_value = EXCLUDED.record_value,
+       updated_at = NOW(),
+       expires_at = NULL`,
+    [key, JSON.stringify(value)]
+  );
 }
 
-// Atomic "set if absent" with expiry; returns true when the lock was acquired.
 async function acquireLock(key, ttlSeconds) {
-  if (redisConfig()) {
-    return (await redisCommand(['SET', key, '1', 'NX', 'EX', ttlSeconds])) === 'OK';
+  if (!useDatabase()) {
+    const expiry = memoryLocks.get(key);
+
+    if (expiry && expiry > Date.now()) return false;
+
+    memoryLocks.set(
+      key,
+      Date.now() + Math.max(1, Number(ttlSeconds) || 1) * 1000
+    );
+
+    return true;
   }
-  requireWalletStore();
-  const expiresAt = memoryLocks.get(key);
-  if (expiresAt && expiresAt > Date.now()) return false;
-  memoryLocks.set(key, Date.now() + ttlSeconds * 1000);
-  return true;
+
+  const result = await getPool().query(
+    `INSERT INTO app_locks (lock_key, expires_at)
+     VALUES ($1, NOW() + ($2 * INTERVAL '1 second'))
+     ON CONFLICT (lock_key)
+     DO UPDATE SET expires_at = EXCLUDED.expires_at
+     WHERE app_locks.expires_at <= NOW()
+     RETURNING lock_key`,
+    [key, Math.max(1, Number(ttlSeconds) || 1)]
+  );
+
+  return result.rowCount > 0;
 }
 
 async function releaseLock(key) {
-  if (redisConfig()) {
-    await redisCommand(['DEL', key]);
+  if (!useDatabase()) {
+    memoryLocks.delete(key);
     return;
   }
-  memoryLocks.delete(key);
+
+  await getPool().query(
+    'DELETE FROM app_locks WHERE lock_key = $1',
+    [key]
+  );
 }
 
-module.exports = { consumeGeneration, getVideo, saveVideo, walletGet, walletAdjust, walletConsume, walletRefund, getRecord, setRecord, acquireLock, releaseLock };
+module.exports = {
+  consumeGeneration,
+  getVideo,
+  saveVideo,
+  walletGet,
+  walletAdjust,
+  walletConsume,
+  walletRefund,
+  getRecord,
+  setRecord,
+  acquireLock,
+  releaseLock,
+};
