@@ -36,12 +36,21 @@ module.exports = async function handler(req, res) {
     res.setHeader('Allow', 'POST');
     return sendJson(res, 405, { error: 'Method not allowed.' });
   }
-  const secret = process.env.LEMON_WEBHOOK_SECRET;
-  if (!secret) return sendJson(res, 503, { error: 'Set LEMON_WEBHOOK_SECRET.' });
+  const secret = (process.env.LEMON_WEBHOOK_SECRET || process.env.LEMONSQUEEZY_WEBHOOK_SECRET || '').trim();
+  if (!secret) {
+    console.error('[webhook] Missing secret env: set LEMON_WEBHOOK_SECRET (or LEMONSQUEEZY_WEBHOOK_SECRET).');
+    return sendJson(res, 503, { error: 'Set LEMON_WEBHOOK_SECRET.' });
+  }
 
+  let stage = 'read-body';
   try {
     const rawBody = await readRawBody(req);
-    if (!validSignature(rawBody, req.headers['x-signature'], secret)) return sendJson(res, 401, { error: 'Invalid webhook signature.' });
+    stage = 'verify-signature';
+    if (!validSignature(rawBody, req.headers['x-signature'], secret)) {
+      console.error(`[webhook] Secret mismatch or malformed x-signature (header present: ${typeof req.headers['x-signature'] === 'string'}, body bytes: ${rawBody.length}).`);
+      return sendJson(res, 401, { error: 'Invalid webhook signature.' });
+    }
+    stage = 'parse-event';
     let event;
     try {
       event = JSON.parse(rawBody.toString('utf8'));
@@ -64,6 +73,7 @@ module.exports = async function handler(req, res) {
       return sendJson(res, 400, { error: 'The order has no valid wallet ID.' });
     }
 
+    stage = `process-${eventName}`;
     if (eventName === 'order_created') {
       const attributes = event?.data?.attributes;
       const expectedVariant = variantIdFor(pkg.id);
@@ -74,7 +84,8 @@ module.exports = async function handler(req, res) {
         || String(attributes?.currency || '').toUpperCase() !== CURRENCY
         || Number(attributes?.total) !== pkg.priceCents
       ) {
-        return sendJson(res, 400, { error: 'Order not paid, or it does not match the package variant, currency or price.' });
+        console.error(`[webhook] Order ${orderId} rejected: variant/status/currency/price mismatch for package ${pkg.id} (expected variant configured: ${Boolean(expectedVariant)}).`);
+      return sendJson(res, 400, { error: 'Order not paid, or it does not match the package variant, currency or price.' });
       }
       const result = await grantPackage(walletId, pkg.id, orderId);
       await recordPaidOrder({ orderId, walletId, packageId: pkg.id, amountCents: pkg.priceCents, currency: CURRENCY });
@@ -87,7 +98,8 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 200, { received: true });
   } catch (error) {
     if (error.statusCode === 413) return sendJson(res, 413, { error: error.message });
-    console.error('Unable to process the LemonSqueezy webhook:', error);
+    const redisRelated = /redis|upstash|wrongpass/i.test(`${error?.message} ${error?.code}`);
+    console.error(`[webhook] Failure at stage "${stage}"${redisRelated ? ' (Redis error)' : ''}:`, error?.message || error);
     return sendJson(res, 503, { error: 'Unable to process the webhook right now.' });
   }
 };
