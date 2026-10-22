@@ -24,6 +24,12 @@
           <option value="it">Italiano</option>
         </select>
       </label>
+      <div id="authBox" class="auth-box" hidden>
+        <div id="googleSignIn"></div>
+        <img id="authAvatar" class="auth-avatar" alt="" referrerpolicy="no-referrer" hidden>
+        <span id="authUser" class="auth-user" hidden></span>
+        <button type="button" id="btnLogout" class="btn-secondary auth-logout" data-i18n="authLogout" hidden>Logout</button>
+      </div>
     </div>
   </header>
 
@@ -103,12 +109,6 @@
         <span class="credit-pill"><strong id="mainCreditsValue">0</strong> <span data-i18n="creditsMain">HD videos</span></span>
         <span class="credit-pill"><strong id="retryCreditsValue">0</strong> <span data-i18n="creditsRetry">free retries</span></span>
         <button type="button" id="btnBuyCredits" class="btn-secondary credits-buy" data-i18n="buyCredits">Buy credits</button>
-<div id="authBox" class="auth-box" hidden>
-<div id="googleSignIn"></div>
-<span id="authUser" class="auth-user" hidden></span>
-<button type="button" id="btnLogout" class="btn-secondary auth-logout" data-i18n="authLogout" hidden>Sign out</button>
-<small id="authHint" class="auth-hint" data-i18n="authHint">Sign in to keep your credits on every device.</small>
-</div>
       </div>
       <div class="form-group">
         <label for="motionPreset" data-i18n="styleMusicLabel">Style & music</label>

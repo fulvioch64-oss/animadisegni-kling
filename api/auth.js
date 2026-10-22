@@ -6,7 +6,7 @@ function sendJson(res, status, body) {
   return res.status(status).setHeader('Content-Type', 'application/json; charset=utf-8').end(JSON.stringify(body));
 }
 
-const publicUser = (user) => (user ? { email: user.email, name: user.name } : null);
+const publicUser = (user) => (user ? { email: user.email, name: user.name, picture: user.picture || '' } : null);
 
 // GET: auth configuration and current user. POST {action: 'google' | 'claim' | 'logout'}.
 module.exports = async function handler(req, res) {
@@ -39,7 +39,8 @@ module.exports = async function handler(req, res) {
     if (body.action === 'google') {
       const profile = await auth.verifyGoogleIdToken(body.credential);
       user = await upsertGoogleUser(profile);
-      res.setHeader('Set-Cookie', auth.sessionCookie(user.userId));
+      user.picture = profile.picture;
+      res.setHeader('Set-Cookie', auth.sessionCookie(user.userId, profile.picture));
     } else if (body.action === 'claim') {
       user = await auth.currentUser(req);
       if (!user) throw apiError('Sign in required.', 401, 'AUTH_REQUIRED');

@@ -892,16 +892,20 @@ async function handleCheckoutReturn() {
 const authBox = document.getElementById('authBox');
 const googleSignIn = document.getElementById('googleSignIn');
 const authUser = document.getElementById('authUser');
-const authHint = document.getElementById('authHint');
+const authAvatar = document.getElementById('authAvatar');
 const btnLogout = document.getElementById('btnLogout');
 
 function renderAuth(user) {
   authBox.hidden = false;
   googleSignIn.hidden = Boolean(user);
-  authHint.hidden = Boolean(user);
   authUser.hidden = !user;
   btnLogout.hidden = !user;
-  authUser.textContent = user ? (user.email || user.name || '') : '';
+  authUser.textContent = user ? (user.name || user.email || '') : '';
+  authUser.title = user?.email || '';
+  const picture = typeof user?.picture === 'string' && user.picture.startsWith('https://') ? user.picture : '';
+  authAvatar.hidden = !picture;
+  if (picture) authAvatar.src = picture;
+  else authAvatar.removeAttribute('src');
 }
 
 async function onGoogleCredential(response) {

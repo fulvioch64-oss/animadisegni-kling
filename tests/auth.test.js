@@ -20,7 +20,7 @@ function idToken(overrides = {}, key = privateKey) {
   const head = enc({ alg: 'RS256', kid: 'k1', typ: 'JWT' });
   const body = enc({
     iss: 'https://accounts.google.com', aud: process.env.GOOGLE_CLIENT_ID, sub: 'sub-1',
-    email: 'a@example.com', email_verified: true, exp: Math.floor(Date.now() / 1000) + 600, ...overrides
+    email: 'a@example.com', email_verified: true, picture: 'https://lh3.googleusercontent.com/a/x', exp: Math.floor(Date.now() / 1000) + 600, ...overrides
   });
   const sig = crypto.sign('RSA-SHA256', Buffer.from(`${head}.${body}`), key).toString('base64url');
   return `${head}.${body}.${sig}`;
@@ -64,6 +64,7 @@ test('login merges the anonymous wallet once, is idempotent and creates no dupli
   assert.deepEqual(await store.walletGet(anon), { mainCredits: 0, retryCredits: 0 });
   const me = await call('GET', undefined, cookie);
   assert.equal(me.body.user.email, 'a@example.com');
+  assert.equal(me.body.user.picture, 'https://lh3.googleusercontent.com/a/x');
   assert.deepEqual(me.body.credits, { mainCredits: 4, retryCredits: 2 });
 
   // A payment started before the login still credits the account.

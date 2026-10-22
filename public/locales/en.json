@@ -123,7 +123,7 @@
   "creditsMain": "HD videos",
   "creditsRetry": "free retries",
   "buyCredits": "Buy credits",
-  "authLogout": "Sign out",
+  "authLogout": "Logout",
   "authHint": "Sign in to keep your credits on every device.",
   "authClaimConflict": "Signed in. The credits of this browser belong to another account and were not merged.",
   "closeLabel": "Close",

@@ -60,7 +60,7 @@ async function verifyGoogleIdToken(idToken) {
     || !(claims.email_verified === true || claims.email_verified === 'true')
   ) throw invalid();
 
-  return { sub: String(claims.sub), email: String(claims.email || '').slice(0, 320), name: String(claims.name || '').slice(0, 200) };
+  return { sub: String(claims.sub), email: String(claims.email || '').slice(0, 320), name: String(claims.name || '').slice(0, 200), picture: String(claims.picture || '').slice(0, 500) };
 }
 
 function sign(payload) {
@@ -93,9 +93,10 @@ function cookieValue(req, name) {
   return '';
 }
 
-function sessionCookie(userId) {
+function sessionCookie(userId, picture = '') {
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
-  const value = sign({ uid: userId, exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS });
+  const pic = picture.startsWith('https://') ? picture : undefined;
+  const value = sign({ uid: userId, pic, exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS });
   return `${COOKIE_NAME}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_SECONDS}${secure}`;
 }
 
@@ -107,7 +108,8 @@ function clearedCookie() {
 // Returns the signed-in user (with their server-owned wallet) or null for anonymous visitors.
 async function currentUser(req) {
   const session = readSession(cookieValue(req, COOKIE_NAME));
-  return session ? getUserById(session.uid) : null;
+  const user = session ? await getUserById(session.uid) : null;
+  return user ? { ...user, picture: session.pic || '' } : null;
 }
 
 // Authenticated users always use their own wallet; the client-sent ID is only trusted for anonymous use.
