@@ -27,6 +27,7 @@ const apiHandlers = new Map([
   ['upload-image', require('./api/upload-image.js')],
   ['checkout', require('./api/checkout.js')],
   ['credits', require('./api/credits.js')],
+  ['auth', require('./api/auth.js')],
   ['payment-status', require('./api/payment-status.js')],
   ['download', require('./api/download.js')],
   ['preview', require('./api/preview.js')],

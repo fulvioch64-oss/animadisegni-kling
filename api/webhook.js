@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const { CURRENCY, getPackage, variantIdFor } = require('./_lib/packages.js');
 const { parseWalletId, grantPackage, revokePackage } = require('./_lib/wallet.js');
+const { resolveCreditWallet } = require('./_lib/store.js');
 const { recordPaidOrder, markPaymentOrderRefunded } = require('./_lib/orders.js');
 
 const MAX_WEBHOOK_BYTES = 1024 * 1024;
@@ -69,6 +70,7 @@ module.exports = async function handler(req, res) {
     try {
       // `user_uuid` is accepted as an alias of `wallet_id` (the anonymous wallet token created by the browser).
       walletId = parseWalletId(customData?.wallet_id ?? customData?.user_uuid);
+      walletId = await resolveCreditWallet(walletId);
     } catch {
       return sendJson(res, 400, { error: 'The order has no valid wallet ID.' });
     }

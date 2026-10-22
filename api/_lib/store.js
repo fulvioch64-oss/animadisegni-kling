@@ -537,7 +537,189 @@ async function releaseLock(key) {
   );
 }
 
+// ---- Google accounts: each user owns one server-generated wallet; anonymous wallets can be claimed once. ----
+const memoryUsers = new Map();
+const memoryClaims = new Map();
+
+function conflictError(message, code) {
+  const error = new Error(message);
+  error.statusCode = 409;
+  error.code = code;
+  return error;
+}
+
+async function upsertGoogleUser({ sub, email, name }) {
+  if (!useDatabase()) {
+    let user = [...memoryUsers.values()].find((entry) => entry.googleSub === sub);
+    if (!user) {
+      user = { userId: crypto.randomUUID(), walletId: crypto.randomUUID(), googleSub: sub };
+      memoryUsers.set(user.userId, user);
+    }
+    Object.assign(user, { email, name });
+    return { userId: user.userId, walletId: user.walletId, email, name };
+  }
+
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const candidateWallet = crypto.randomUUID();
+    await ensureWallet(client, candidateWallet);
+    const result = await client.query(
+      `INSERT INTO users (user_id, google_sub, email, name, wallet_id)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (google_sub) DO UPDATE
+         SET email = EXCLUDED.email, name = EXCLUDED.name, last_login_at = NOW()
+       RETURNING user_id, wallet_id, email, name`,
+      [crypto.randomUUID(), sub, email, name, candidateWallet]
+    );
+    await client.query('COMMIT');
+    const row = result.rows[0];
+    return { userId: row.user_id, walletId: row.wallet_id, email: row.email, name: row.name };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function getUserById(userId) {
+  if (!useDatabase()) {
+    const user = memoryUsers.get(userId);
+    return user ? { userId: user.userId, walletId: user.walletId, email: user.email, name: user.name } : null;
+  }
+  const result = await getPool().query(
+    'SELECT user_id, wallet_id, email, name FROM users WHERE user_id = $1',
+    [userId]
+  );
+  const row = result.rows[0];
+  return row ? { userId: row.user_id, walletId: row.wallet_id, email: row.email, name: row.name } : null;
+}
+
+// Moves the whole balance of an anonymous wallet into the user's wallet, exactly once.
+async function claimAnonymousWallet(userId, anonWalletId) {
+  if (!useDatabase()) {
+    const user = memoryUsers.get(userId);
+    if (!user) throw conflictError('Unknown user.', 'INVALID_USER');
+    if (anonWalletId === user.walletId) return { claimed: false, ...(await walletGet(user.walletId)) };
+    const owner = memoryClaims.get(anonWalletId);
+    if (owner) {
+      if (owner === userId) return { claimed: false, ...(await walletGet(user.walletId)) };
+      throw conflictError('This wallet is already linked to another account.', 'WALLET_ALREADY_CLAIMED');
+    }
+    if ([...memoryUsers.values()].some((entry) => entry.walletId === anonWalletId)) {
+      throw conflictError('This wallet is already linked to another account.', 'WALLET_ALREADY_CLAIMED');
+    }
+    const anon = memoryWallets.get(anonWalletId) || { main: 0, retry: 0 };
+    const target = memoryWallets.get(user.walletId) || { main: 0, retry: 0 };
+    target.main += anon.main;
+    target.retry += anon.retry;
+    memoryWallets.set(user.walletId, target);
+    memoryWallets.set(anonWalletId, { main: 0, retry: 0 });
+    memoryClaims.set(anonWalletId, userId);
+    return { claimed: true, ...balance(target.main, target.retry) };
+  }
+
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const userRow = await client.query('SELECT wallet_id FROM users WHERE user_id = $1 FOR UPDATE', [userId]);
+    if (!userRow.rows[0]) throw conflictError('Unknown user.', 'INVALID_USER');
+    const userWallet = userRow.rows[0].wallet_id;
+    const currentBalance = async () => {
+      const row = (await client.query('SELECT main_credits, retry_credits FROM wallets WHERE wallet_id = $1', [userWallet])).rows[0];
+      return balance(row?.main_credits, row?.retry_credits);
+    };
+
+    if (anonWalletId === userWallet) {
+      await client.query('COMMIT');
+      return { claimed: false, ...(await currentBalance()) };
+    }
+
+    const existing = await client.query('SELECT user_id FROM wallet_claims WHERE anon_wallet_id = $1', [anonWalletId]);
+    if (existing.rows[0]) {
+      if (existing.rows[0].user_id === userId) {
+        await client.query('COMMIT');
+        return { claimed: false, ...(await currentBalance()) };
+      }
+      throw conflictError('This wallet is already linked to another account.', 'WALLET_ALREADY_CLAIMED');
+    }
+    const isAccountWallet = await client.query('SELECT 1 FROM users WHERE wallet_id = $1', [anonWalletId]);
+    if (isAccountWallet.rowCount > 0) {
+      throw conflictError('This wallet is already linked to another account.', 'WALLET_ALREADY_CLAIMED');
+    }
+
+    await ensureWallet(client, anonWalletId);
+    const locked = await client.query(
+      'SELECT main_credits, retry_credits FROM wallets WHERE wallet_id = $1 FOR UPDATE',
+      [anonWalletId]
+    );
+    const main = locked.rows[0].main_credits;
+    const retry = locked.rows[0].retry_credits;
+
+    await client.query(
+      `INSERT INTO wallet_claims (anon_wallet_id, user_id, main_moved, retry_moved)
+       VALUES ($1, $2, $3, $4)`,
+      [anonWalletId, userId, main, retry]
+    );
+    if (main > 0 || retry > 0) {
+      await client.query(
+        `INSERT INTO wallet_events (event_key, wallet_id, main_delta, retry_delta)
+         VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)`,
+        [
+          `animadisegni:wallet-event:claim-out:${anonWalletId}`, anonWalletId, -main, -retry,
+          `animadisegni:wallet-event:claim-in:${anonWalletId}`, userWallet, main, retry
+        ]
+      );
+      await client.query(
+        'UPDATE wallets SET main_credits = 0, retry_credits = 0, updated_at = NOW() WHERE wallet_id = $1',
+        [anonWalletId]
+      );
+      await client.query(
+        `UPDATE wallets SET main_credits = main_credits + $2, retry_credits = retry_credits + $3, updated_at = NOW()
+         WHERE wallet_id = $1`,
+        [userWallet, main, retry]
+      );
+    }
+    const result = await currentBalance();
+    await client.query('COMMIT');
+    return { claimed: true, ...result };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (error.code === '23505') {
+      throw conflictError('This wallet is already linked to another account.', 'WALLET_ALREADY_CLAIMED');
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// Payments started before the login carry the anonymous wallet ID: credit the account that claimed it.
+async function resolveCreditWallet(walletId) {
+  if (!useDatabase()) {
+    const ownerId = memoryClaims.get(walletId);
+    return ownerId ? memoryUsers.get(ownerId).walletId : walletId;
+  }
+  try {
+    const result = await getPool().query(
+      `SELECT u.wallet_id FROM wallet_claims c JOIN users u ON u.user_id = c.user_id
+       WHERE c.anon_wallet_id = $1`,
+      [walletId]
+    );
+    return result.rows[0]?.wallet_id || walletId;
+  } catch (error) {
+    // 42P01: the account tables are not migrated yet, so no wallet can have been claimed.
+    if (error.code === '42P01') return walletId;
+    throw error;
+  }
+}
+
 module.exports = {
+  upsertGoogleUser,
+  getUserById,
+  claimAnonymousWallet,
+  resolveCreditWallet,
   consumeGeneration,
   getVideo,
   saveVideo,

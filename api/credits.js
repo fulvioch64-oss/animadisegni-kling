@@ -1,6 +1,6 @@
 const { publicPackages } = require('./_lib/packages.js');
 const { walletGet } = require('./_lib/store.js');
-const { parseWalletId } = require('./_lib/wallet.js');
+const { resolveWallet } = require('./_lib/auth.js');
 
 function sendJson(res, status, body) {
   return res.status(status).setHeader('Content-Type', 'application/json; charset=utf-8').end(JSON.stringify(body));
@@ -12,7 +12,7 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 405, { error: 'Method not allowed.' });
   }
   try {
-    const walletId = parseWalletId(req.query?.walletId);
+    const { walletId } = await resolveWallet(req, req.query?.walletId);
     const balance = await walletGet(walletId);
     return sendJson(res, 200, { ...balance, packages: publicPackages() });
   } catch (error) {

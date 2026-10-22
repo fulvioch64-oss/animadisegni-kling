@@ -888,8 +888,68 @@ async function handleCheckoutReturn() {
   }
 }
 
+// ---- Google sign-in (optional: anonymous use keeps working) ----
+const authBox = document.getElementById('authBox');
+const googleSignIn = document.getElementById('googleSignIn');
+const authUser = document.getElementById('authUser');
+const authHint = document.getElementById('authHint');
+const btnLogout = document.getElementById('btnLogout');
+
+function renderAuth(user) {
+  authBox.hidden = false;
+  googleSignIn.hidden = Boolean(user);
+  authHint.hidden = Boolean(user);
+  authUser.hidden = !user;
+  btnLogout.hidden = !user;
+  authUser.textContent = user ? (user.email || user.name || '') : '';
+}
+
+async function onGoogleCredential(response) {
+  try {
+    const data = await callJsonApi('/api/auth', { method: 'POST', body: { action: 'google', credential: response.credential, walletId: getWalletId() } });
+    renderAuth(data.user);
+    if (data.credits) setCredits(data.credits);
+    if (data.claimError) testStatus.textContent = t('authClaimConflict');
+  } catch (error) {
+    testStatus.textContent = error.message;
+  }
+}
+
+function loadGoogleScript() {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+async function initAuth() {
+  try {
+    const state = await callJsonApi('/api/auth');
+    if (!state.googleClientId) return;
+    renderAuth(state.user);
+    if (state.user) return;
+    await loadGoogleScript();
+    window.google.accounts.id.initialize({ client_id: state.googleClientId, callback: onGoogleCredential });
+    window.google.accounts.id.renderButton(googleSignIn, { theme: 'outline', size: 'medium', text: 'signin_with' });
+  } catch (error) {
+    console.error('Google sign-in unavailable.', error);
+  }
+}
+
+btnLogout.addEventListener('click', async () => {
+  try {
+    await callJsonApi('/api/auth', { method: 'POST', body: { action: 'logout' } });
+  } finally {
+    window.location.reload();
+  }
+});
+
 i18n.applyTranslations();
 restoreCustomization();
 renderCardPreview();
-refreshCredits().catch((error) => console.error('Unable to load the credit balance.', error));
+initAuth().finally(() => refreshCredits().catch((error) => console.error('Unable to load the credit balance.', error)));
 handleCheckoutReturn();

@@ -164,6 +164,10 @@ button { touch-action: manipulation; }
 .credit-pill { padding: 8px 14px; border: 2px solid var(--line); border-radius: 99px; background: #fffdfa; font-weight: 600; }
 .credit-pill strong { color: var(--coral); font-size: 1.15rem; }
 .btn-secondary.credits-buy { width: auto; min-height: 40px; margin-left: auto; padding: 8px 16px; }
+.auth-box { display: flex; flex-basis: 100%; flex-wrap: wrap; align-items: center; gap: 10px; }
+.auth-user { font-weight: 600; overflow-wrap: anywhere; }
+.auth-hint { opacity: 0.75; }
+.btn-secondary.auth-logout { width: auto; min-height: 36px; padding: 6px 14px; }
 
 .packages-modal { width: min(980px, calc(100% - 24px)); max-height: calc(100% - 24px); padding: 28px 24px 22px; border: 0; border-radius: 26px; background: var(--cream); color: var(--ink); box-shadow: 0 24px 70px #42364d55; }
 .packages-modal::backdrop { background: #2a203199; backdrop-filter: blur(3px); }

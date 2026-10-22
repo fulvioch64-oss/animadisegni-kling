@@ -6,6 +6,7 @@ const localEnvFiles = ['.env.local', '.env']
 if (localEnvFiles.length) require('dotenv').config({ path: localEnvFiles });
 
 const { createDance, getDanceStatus } = require('./_lib/kling.js');
+const { currentUser } = require('./_lib/auth.js');
 
 function sendJson(res, status, body) {
   return res.status(status).setHeader('Content-Type', 'application/json; charset=utf-8').end(JSON.stringify(body));
@@ -19,7 +20,10 @@ module.exports = async function handler(req, res) {
       }
       const forwardedIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim();
       const clientIp = req.ip || forwardedIp;
-      const result = await createDance(req.body, clientIp);
+      // A signed-in user is charged on their own wallet, never on a client-supplied ID.
+      const user = await currentUser(req);
+      const body = user ? { ...req.body, walletId: user.walletId } : req.body;
+      const result = await createDance(body, clientIp);
       return sendJson(res, 200, result.status === 'COMPLETE' ? { success: true, ...result } : result);
     }
     if (req.method === 'GET') {
