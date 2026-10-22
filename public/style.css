@@ -165,6 +165,8 @@ button { touch-action: manipulation; }
 .credit-pill strong { color: var(--coral); font-size: 1.15rem; }
 .btn-secondary.credits-buy { width: auto; min-height: 40px; margin-left: auto; padding: 8px 16px; }
 .auth-box { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.auth-box.auth-highlight { animation: authPulse 1.2s ease-out 2; border-radius: 12px; }
+@keyframes authPulse { 0% { box-shadow: 0 0 0 0 rgba(57, 124, 146, 0.7); } 100% { box-shadow: 0 0 0 14px rgba(57, 124, 146, 0); } }
 .auth-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex: none; }
 .auth-user { font-weight: 600; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .btn-secondary.auth-logout { width: auto; min-height: 36px; padding: 6px 14px; }

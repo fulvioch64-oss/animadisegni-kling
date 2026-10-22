@@ -124,6 +124,8 @@
   "creditsRetry": "rigenerazioni gratuite",
   "buyCredits": "Acquista crediti",
   "authLogout": "Logout",
+  "authRequiredToBuy": "Accedi con Google per acquistare crediti.",
+  "apiError_AUTH_REQUIRED": "Accedi con Google per acquistare crediti.",
   "authHint": "Accedi per ritrovare i tuoi crediti su ogni dispositivo.",
   "authClaimConflict": "Accesso eseguito. I crediti di questo browser appartengono a un altro account e non sono stati uniti.",
   "closeLabel": "Chiudi",

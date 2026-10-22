@@ -106,3 +106,15 @@ test('concurrent claims of the same wallet credit the account exactly once', asy
   await Promise.all([store.claimAnonymousWallet(user.userId, anon), store.claimAnonymousWallet(user.userId, anon)]);
   assert.deepEqual(await store.walletGet(user.walletId), { mainCredits: 3, retryCredits: 0 });
 });
+const checkout = require('../api/checkout.js');
+test('checkout rejects anonymous users with 401 and creates no payment session', async () => {
+  let fetched = false;
+  const realFetch = global.fetch;
+  global.fetch = async () => { fetched = true; throw new Error('must not be called'); };
+  const res = { headers: {}, status(c) { this.statusCode = c; return this; }, setHeader() { return this; }, end(t) { this.body = JSON.parse(t); return this; } };
+  await checkout({ method: 'POST', body: { walletId: crypto.randomUUID(), packageId: 'starter' }, headers: { host: 'localhost:3000' } }, res);
+  global.fetch = realFetch;
+  assert.equal(res.statusCode, 401);
+  assert.equal(res.body.code, 'AUTH_REQUIRED');
+  assert.equal(fetched, false);
+});

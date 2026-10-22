@@ -596,6 +596,10 @@ function showPackagesStatus(message, isError = false) {
 }
 
 async function openPackages(message = '') {
+  if (!isSignedIn) {
+    promptLogin();
+    return;
+  }
   showPackagesStatus(message);
   if (!packages.length) {
     try {
@@ -613,6 +617,11 @@ packagesModal.addEventListener('click', (event) => {
 });
 
 async function buyPackage(packageId, button) {
+  if (!isSignedIn) {
+    packagesModal.close();
+    promptLogin();
+    return;
+  }
   button.disabled = true;
   showPackagesStatus('');
   try {
@@ -896,7 +905,20 @@ const authUser = document.getElementById('authUser');
 const authAvatar = document.getElementById('authAvatar');
 const btnLogout = document.getElementById('btnLogout');
 
+let isSignedIn = false;
+
+// Anonymous users cannot buy: explain why and draw attention to the Google button in the header.
+function promptLogin() {
+  testStatus.textContent = t('authRequiredToBuy');
+  authBox.hidden = false;
+  authBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  authBox.classList.remove('auth-highlight');
+  void authBox.offsetWidth;
+  authBox.classList.add('auth-highlight');
+}
+
 function renderAuth(user) {
+  isSignedIn = Boolean(user);
   authBox.hidden = false;
   googleSignIn.hidden = Boolean(user);
   authUser.hidden = !user;

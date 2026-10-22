@@ -1,6 +1,6 @@
 const { variantIdFor } = require('./_lib/packages.js');
 const { requirePackage } = require('./_lib/wallet.js');
-const { resolveWallet } = require('./_lib/auth.js');
+const { currentUser } = require('./_lib/auth.js');
 
 function sendJson(res, status, body) {
   return res.status(status).setHeader('Content-Type', 'application/json; charset=utf-8').end(JSON.stringify(body));
@@ -12,10 +12,14 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 405, { error: 'Method not allowed.' });
   }
   try {
-    const { walletId, user } = await resolveWallet(req, req.body?.walletId);
+    const user = await currentUser(req);
+    if (!user) {
+      return sendJson(res, 401, { error: 'Sign in with Google to buy credits.', code: 'AUTH_REQUIRED' });
+    }
+    const walletId = user.walletId;
     const pkg = requirePackage(req.body?.packageId);
     const appUrl = process.env.PUBLIC_BASE_URL || (process.env.NODE_ENV !== 'production' ? `http://${req.headers.host || 'localhost:3000'}` : '');
-    const customData = { wallet_id: walletId, user_uuid: walletId, package_id: pkg.id, ...(user ? { user_id: user.userId } : {}) };
+    const customData = { wallet_id: walletId, user_uuid: walletId, package_id: pkg.id, user_id: user.userId };
     const redirectUrl = appUrl ? `${appUrl.replace(/\/$/, '')}/?purchase=success&package=${encodeURIComponent(pkg.id)}` : '';
     // Preferred: create the checkout from the package Variant ID through the LemonSqueezy API.
     const apiKey = (process.env.LEMONSQUEEZY_API_KEY || '').trim();
