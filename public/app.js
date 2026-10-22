@@ -914,6 +914,8 @@ async function onGoogleCredential(response) {
     renderAuth(data.user);
     if (data.credits) setCredits(data.credits);
     if (data.claimError) testStatus.textContent = t('authClaimConflict');
+    // Re-check the session from the server so header and credits reflect the new cookie without an F5.
+    await checkAuth();
   } catch (error) {
     testStatus.textContent = error.message;
   }
@@ -930,30 +932,44 @@ function loadGoogleScript() {
   });
 }
 
-async function initAuth() {
+let googleButtonReady = false;
+
+async function ensureGoogleButton(clientId) {
+  if (googleButtonReady) return;
+  await loadGoogleScript();
+  window.google.accounts.id.initialize({ client_id: clientId, callback: onGoogleCredential });
+  window.google.accounts.id.renderButton(googleSignIn, { theme: 'outline', size: 'medium', text: 'signin_with' });
+  googleButtonReady = true;
+}
+
+// Reads the session from the server, re-renders the header and refreshes the balance.
+async function checkAuth() {
   try {
     const state = await callJsonApi('/api/auth');
-    if (!state.googleClientId) return;
+    if (!state.googleClientId) return null;
     renderAuth(state.user);
-    if (state.user) return;
-    await loadGoogleScript();
-    window.google.accounts.id.initialize({ client_id: state.googleClientId, callback: onGoogleCredential });
-    window.google.accounts.id.renderButton(googleSignIn, { theme: 'outline', size: 'medium', text: 'signin_with' });
+    if (state.user) await refreshCredits().catch(() => {});
+    else await ensureGoogleButton(state.googleClientId);
+    return state.user;
   } catch (error) {
     console.error('Google sign-in unavailable.', error);
+    return null;
   }
 }
 
 btnLogout.addEventListener('click', async () => {
   try {
     await callJsonApi('/api/auth', { method: 'POST', body: { action: 'logout' } });
-  } finally {
-    window.location.reload();
+    window.google?.accounts?.id?.disableAutoSelect();
+  } catch (error) {
+    testStatus.textContent = error.message;
   }
+  await checkAuth();
+  await refreshCredits().catch(() => {});
 });
 
 i18n.applyTranslations();
 restoreCustomization();
 renderCardPreview();
-initAuth().finally(() => refreshCredits().catch((error) => console.error('Unable to load the credit balance.', error)));
+checkAuth().finally(() => refreshCredits().catch((error) => console.error('Unable to load the credit balance.', error)));
 handleCheckoutReturn();
