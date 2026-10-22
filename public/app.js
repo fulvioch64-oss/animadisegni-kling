@@ -636,6 +636,7 @@ async function callJsonApi(url, { method = 'GET', body } = {}) {
   try {
     response = await fetch(url, {
       method,
+      credentials: 'include',
       headers: body ? { 'Content-Type': 'application/json' } : {},
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal
@@ -914,7 +915,8 @@ async function onGoogleCredential(response) {
     renderAuth(data.user);
     if (data.credits) setCredits(data.credits);
     if (data.claimError) testStatus.textContent = t('authClaimConflict');
-    // Re-check the session from the server so header and credits reflect the new cookie without an F5.
+    // Second pass after the Google popup closes, to force the visual refresh.
+    setTimeout(() => { renderAuth(data.user); checkAuth(); }, 50);
     await checkAuth();
   } catch (error) {
     testStatus.textContent = error.message;
