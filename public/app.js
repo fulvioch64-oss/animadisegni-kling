@@ -779,6 +779,10 @@ async function startGeneration(isRetry) {
     testStatus.textContent = t('apiError_RETRY_MISMATCH');
     return;
   }
+  if (!isSignedIn) {
+    promptLogin();
+    return;
+  }
   if ((isRetry ? credits.retryCredits : credits.mainCredits) <= 0) {
     openPackages(t(isRetry ? 'apiError_NO_RETRY_CREDITS' : 'readyPickPackage'));
     return;
@@ -852,7 +856,8 @@ async function startGeneration(isRetry) {
     testStatus.textContent = error instanceof Error ? error.message : t('errorGenerationService');
     testStatus.classList.add('status-error');
     console.error('Animation generation failed.', error);
-    if (error?.code === 'NO_CREDITS' || error?.code === 'NO_RETRY_CREDITS') {
+    if (error?.code === 'AUTH_REQUIRED') promptLogin();
+    else if (error?.code === 'NO_CREDITS' || error?.code === 'NO_RETRY_CREDITS') {
       refreshCredits().catch(() => {});
       openPackages(testStatus.textContent);
     }

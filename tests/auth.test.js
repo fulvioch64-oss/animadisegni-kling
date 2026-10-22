@@ -118,3 +118,20 @@ test('checkout rejects anonymous users with 401 and creates no payment session',
   assert.equal(res.body.code, 'AUTH_REQUIRED');
   assert.equal(fetched, false);
 });
+
+test('anonymous generation is rejected with 401 AUTH_REQUIRED even with credits', async () => {
+  const gen = require('../api/generate-dance.js');
+  const funded = crypto.randomUUID();
+  await store.walletAdjust(funded, 'order:gen1', 5, 5);
+  const res = { headers: {}, status(c) { this.statusCode = c; return this; }, setHeader() { return this; }, end(t) { this.body = JSON.parse(t); return this; } };
+  await gen({ method: 'POST', body: { walletId: funded, imageUrl: 'data:image/png;base64,AAAA' }, headers: {} }, res);
+  assert.equal(res.statusCode, 401);
+  assert.equal(res.body.code, 'AUTH_REQUIRED');
+  assert.deepEqual(await store.walletGet(funded), { mainCredits: 5, retryCredits: 5 });
+});
+
+test('moveFile-based rendering code loads and video dirs are consistent', () => {
+  const loop = require('../api/_lib/video-loop.js');
+  assert.ok(loop.OUTPUT_DIRECTORY.endsWith('.generated-videos'));
+  require('../api/_lib/send-video-file.js');
+});

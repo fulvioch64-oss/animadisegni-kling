@@ -11,9 +11,19 @@ const MAX_SOURCE_VIDEO_BYTES = 100 * 1024 * 1024;
 const SOURCE_DURATION_SECONDS = 5;
 const PING_PONG_CYCLES = 4;
 const OUTPUT_DURATION_SECONDS = SOURCE_DURATION_SECONDS * 2 * PING_PONG_CYCLES;
-const OUTPUT_DIRECTORY = path.resolve(__dirname, '..', '..', '.generated-videos');
+// /var/task is read-only on Vercel: videos live in the writable /tmp there.
+const OUTPUT_DIRECTORY = process.env.VERCEL
+  ? path.join(os.tmpdir(), '.generated-videos')
+  : path.resolve(__dirname, '..', '..', '.generated-videos');
 const VIDEO_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const activeRenders = new Map();
+
+// fs.rename fails with EXDEV across devices (e.g. /tmp -> project dir): copy then remove the source instead.
+async function moveFile(source, destination) {
+  await fs.promises.mkdir(path.dirname(destination), { recursive: true });
+  await fs.promises.copyFile(source, destination);
+  await fs.promises.unlink(source);
+}
 
 function validateVideoUrl(value) {
   let url;
@@ -158,7 +168,7 @@ async function renderVideoOnce(token, videoUrl, aspectRatio, card) {
     await renderPingPong(sourcePath, outputPath, token, aspectRatio, card, temporaryDirectory);
     const outputInfo = await fs.promises.stat(outputPath);
     if (!outputInfo.isFile() || outputInfo.size === 0) throw new Error('FFmpeg produced an empty video file.');
-    await fs.promises.rename(outputPath, finalPath);
+    await moveFile(outputPath, finalPath);
     console.info(`[video:${token}] Saved ${OUTPUT_DURATION_SECONDS}-second preview (${outputInfo.size} bytes) in ${Date.now() - startedAt} ms.`);
     return finalPath;
   } finally {
@@ -200,7 +210,7 @@ async function addAudioTrack(token, videoPath, audioPath) {
       else reject(new Error(`FFmpeg audio merge failed with exit code ${code}: ${stderr.trim() || 'no details available'}`));
     });
   });
-  await fs.promises.rename(temporaryPath, outputPath);
+  await moveFile(temporaryPath, outputPath);
   return outputPath;
 }
 

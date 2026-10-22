@@ -1,6 +1,8 @@
 import kling from '../../../api/_lib/kling.js';
+import auth from '../../../api/_lib/auth.js';
 
 const { createDance, getDanceStatus } = kling;
+const { currentUser } = auth;
 
 export const runtime = 'nodejs';
 
@@ -10,12 +12,14 @@ function jsonResponse(body, status = 200) {
 
 export async function POST(request) {
   try {
+    const user = await currentUser({ headers: { cookie: request.headers.get('cookie') || '' } });
+    if (!user) return jsonResponse({ error: 'Sign in with Google to generate videos.', code: 'AUTH_REQUIRED' }, 401);
     const body = await request.json();
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return jsonResponse({ error: 'Corpo della richiesta non valido.' }, 400);
     }
     const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
-    return jsonResponse(await createDance(body, clientIp));
+    return jsonResponse(await createDance({ ...body, walletId: user.walletId }, clientIp));
   } catch (error) {
     const status = error instanceof SyntaxError ? 400
       : Number.isInteger(error.statusCode) ? error.statusCode : 502;

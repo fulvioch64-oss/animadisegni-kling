@@ -15,14 +15,18 @@ function sendJson(res, status, body) {
 module.exports = async function handler(req, res) {
   try {
     if (req.method === 'POST') {
+      // Anonymous visitors are rejected first: no body parsing, image processing or temporary files.
+      const user = await currentUser(req);
+      if (!user) {
+        return sendJson(res, 401, { error: 'Sign in with Google to generate videos.', code: 'AUTH_REQUIRED' });
+      }
       if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
         return sendJson(res, 400, { error: 'Corpo della richiesta non valido.' });
       }
       const forwardedIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim();
       const clientIp = req.ip || forwardedIp;
-      // A signed-in user is charged on their own wallet, never on a client-supplied ID.
-      const user = await currentUser(req);
-      const body = user ? { ...req.body, walletId: user.walletId } : req.body;
+      // The charged wallet always comes from the session, never from a client-supplied ID.
+      const body = { ...req.body, walletId: user.walletId };
       const result = await createDance(body, clientIp);
       return sendJson(res, 200, result.status === 'COMPLETE' ? { success: true, ...result } : result);
     }

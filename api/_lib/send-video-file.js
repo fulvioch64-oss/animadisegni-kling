@@ -1,7 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-
-const VIDEO_DIRECTORY = path.resolve(__dirname, '..', '..', '.generated-videos');
+const { OUTPUT_DIRECTORY: VIDEO_DIRECTORY } = require('./video-loop.js');
 
 module.exports = async function sendVideoFile(req, res, filePath, download = false) {
   const resolvedPath = path.resolve(filePath);
