@@ -55,13 +55,14 @@ module.exports = async function handler(req, res) {
       try {
         claim = await claimAnonymousWallet(user.userId, parseWalletId(body.walletId));
       } catch (error) {
-        if (!Number.isInteger(error.statusCode) || error.statusCode >= 500) throw error;
-        claimError = error.code;
+        // The session is already established: a failed merge must never turn the login into an error.
+        console.error('[auth] Wallet claim failed:', error.code || error.message);
+        claimError = Number.isInteger(error.statusCode) && error.statusCode < 500 ? error.code : 'CLAIM_FAILED';
       }
     }
     return sendJson(res, 200, {
       user: publicUser(user),
-      credits: await walletGet(user.walletId),
+      credits: await walletGet(user.walletId).catch(() => undefined),
       claimed: Boolean(claim.claimed),
       ...(claimError ? { claimError } : {})
     });

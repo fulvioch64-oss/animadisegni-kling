@@ -914,12 +914,14 @@ async function onGoogleCredential(response) {
     const data = await callJsonApi('/api/auth', { method: 'POST', body: { action: 'google', credential: response.credential, walletId: getWalletId() } });
     renderAuth(data.user);
     if (data.credits) setCredits(data.credits);
-    if (data.claimError) testStatus.textContent = t('authClaimConflict');
+    if (data.claimError === 'WALLET_ALREADY_CLAIMED') testStatus.textContent = t('authClaimConflict');
     // Second pass after the Google popup closes, to force the visual refresh.
     setTimeout(() => { renderAuth(data.user); checkAuth(); }, 50);
     await checkAuth();
   } catch (error) {
     testStatus.textContent = error.message;
+    // The cookie may already be set even if the response failed: re-read the real session.
+    await checkAuth();
   }
 }
 
