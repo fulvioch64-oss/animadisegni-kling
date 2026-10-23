@@ -20,6 +20,10 @@ function variantIdFor(id) {
   return (process.env[envName('LEMONSQUEEZY_VARIANT_ID', id)] || '').trim();
 }
 
+function stripePriceIdFor(id) {
+  return (process.env[envName('NEXT_PUBLIC_STRIPE_PRICE', id)] || process.env[envName('STRIPE_PRICE', id)] || '').trim();
+}
+
 function publicPackages() {
   return Object.values(PACKAGES).map((pkg) => ({
     id: pkg.id,
@@ -31,4 +35,4 @@ function publicPackages() {
   }));
 }
 
-module.exports = { PACKAGES, CURRENCY, getPackage, variantIdFor, publicPackages };
+module.exports = { PACKAGES, CURRENCY, getPackage, variantIdFor, stripePriceIdFor, publicPackages };

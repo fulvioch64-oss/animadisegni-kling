@@ -32,6 +32,7 @@ const apiHandlers = new Map([
   ['download', require('./api/download.js')],
   ['preview', require('./api/preview.js')],
   ['webhook', require('./api/webhook.js')],
+  ['stripe-webhook', require('./api/stripe-webhook.js')],
   ['retry', require('./api/retry.js')],
   ['test-fal', require('./api/test-fal.js')]
 ]);
@@ -134,7 +135,7 @@ const server = http.createServer(async (req, res) => {
     try {
       req.ip = req.socket.remoteAddress;
       req.query = Object.fromEntries(requestUrl.searchParams.entries());
-      if (req.method === 'POST' && apiMatch[1] !== 'webhook') req.body = await readJsonBody(req);
+      if (req.method === 'POST' && apiMatch[1] !== 'webhook' && apiMatch[1] !== 'stripe-webhook') req.body = await readJsonBody(req);
       res.status = function status(code) {
         res.statusCode = code;
         return res;

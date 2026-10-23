@@ -135,3 +135,58 @@ test('moveFile-based rendering code loads and video dirs are consistent', () => 
   assert.ok(loop.OUTPUT_DIRECTORY.endsWith('.generated-videos'));
   require('../api/_lib/send-video-file.js');
 });
+
+// ---- Stripe ----
+function mockRes() {
+  return { headers: {}, status(c) { this.statusCode = c; return this; }, setHeader(n, v) { this.headers[n.toLowerCase()] = v; return this; }, end(t) { this.body = JSON.parse(t); return this; } };
+}
+
+test('Stripe checkout: signed-in user gets a session built server-side from packageId', async () => {
+  process.env.STRIPE_SECRET_KEY = 'sk_test_dummy';
+  process.env.NEXT_PUBLIC_STRIPE_PRICE_FAMILY = 'price_family_test';
+  process.env.PUBLIC_BASE_URL = 'https://example.test';
+  const login = await call('POST', { action: 'google', credential: idToken({ sub: 'sub-stripe' }) });
+  const cookie = cookieOf(login);
+  const realFetch = global.fetch;
+  let sent;
+  global.fetch = async (url, options) => { sent = { url, body: new URLSearchParams(options.body) }; return { ok: true, json: async () => ({ url: 'https://checkout.stripe.com/c/pay/x' }) }; };
+  const checkout = require('../api/checkout.js');
+  const res = mockRes();
+  await checkout({ method: 'POST', body: { packageId: 'family', priceId: 'price_evil' }, headers: { host: 'x', cookie } }, res);
+  global.fetch = realFetch;
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.url, 'https://checkout.stripe.com/c/pay/x');
+  assert.equal(sent.body.get('line_items[0][price]'), 'price_family_test');
+  assert.equal(sent.body.get('metadata[package_id]'), 'family');
+  assert.ok(sent.body.get('metadata[wallet_id]'));
+  const bad = mockRes();
+  await checkout({ method: 'POST', body: { packageId: 'nope' }, headers: { host: 'x', cookie } }, bad);
+  assert.equal(bad.statusCode, 400);
+});
+
+test('Stripe webhook: verifies signature, credits once, rejects wrong amount', async () => {
+  process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_secret';
+  const hook = require('../api/stripe-webhook.js');
+  const wallet = crypto.randomUUID();
+  const sessionObj = (over = {}) => ({ id: `cs_${crypto.randomUUID()}`, payment_status: 'paid', currency: 'eur', amount_total: 999, metadata: { wallet_id: wallet, package_id: 'family' }, ...over });
+  const deliver = async (session, { secret = process.env.STRIPE_WEBHOOK_SECRET, ts = Math.floor(Date.now() / 1000) } = {}) => {
+    const raw = Buffer.from(JSON.stringify({ type: 'checkout.session.completed', data: { object: session } }));
+    const sig = crypto.createHmac('sha256', secret).update(`${ts}.`).update(raw).digest('hex');
+    const req = require('node:stream').Readable.from([raw]);
+    req.method = 'POST'; req.headers = { 'stripe-signature': `t=${ts},v1=${sig}` };
+    const res = mockRes();
+    await hook(req, res);
+    return res;
+  };
+  const ok = sessionObj();
+  assert.equal((await deliver(ok)).statusCode, 200);
+  assert.deepEqual(await store.walletGet(wallet), { mainCredits: 4, retryCredits: 2 });
+  assert.equal((await deliver(ok)).statusCode, 200);
+  await Promise.all([deliver(ok), deliver(ok)]);
+  assert.deepEqual(await store.walletGet(wallet), { mainCredits: 4, retryCredits: 2 });
+  assert.equal((await deliver(sessionObj(), { secret: 'wrong' })).statusCode, 401);
+  assert.equal((await deliver(sessionObj(), { ts: 1000 })).statusCode, 401);
+  assert.equal((await deliver(sessionObj({ amount_total: 1 }))).statusCode, 400);
+  assert.equal((await deliver(sessionObj({ payment_status: 'unpaid' }))).body.pending, true);
+  assert.deepEqual(await store.walletGet(wallet), { mainCredits: 4, retryCredits: 2 });
+});

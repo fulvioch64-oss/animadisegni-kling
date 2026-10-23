@@ -625,7 +625,7 @@ async function buyPackage(packageId, button) {
   button.disabled = true;
   showPackagesStatus('');
   try {
-    const data = await callJsonApi('/api/checkout', { method: 'POST', body: { walletId: getWalletId(), packageId } });
+    const data = await callJsonApi('/api/checkout', { method: 'POST', body: { packageId } });
     const target = new URL(data.url);
     if (target.protocol !== 'https:' && target.hostname !== 'localhost') throw new Error(t('errorCheckoutUrl'));
     sessionStorage.setItem(PENDING_PURCHASE_KEY, JSON.stringify({ packageId, baseline: credits }));
