@@ -144,6 +144,8 @@
   "packageRetries": "🎁 {count} rigenerazioni di cortesia in regalo",
   "packageChoose": "Scegli il pacchetto",
   "packageSimulate": "🧪 Simula acquisto (locale)",
+  "apiError_GENERATION_IN_PROGRESS": "Un video è già in generazione. Attendi che finisca.",
+  "apiError_GENERATION_FAILED": "Il servizio video non ha restituito il video. Nessun credito scalato, riprova.",
   "apiError_NO_CREDITS": "Hai finito i crediti video. Scegli un pacchetto per continuare a creare.",
   "apiError_NO_RETRY_CREDITS": "Hai finito le rigenerazioni gratuite. Scegli un pacchetto, oppure crea un nuovo video con un credito principale.",
   "apiError_RETRY_MISMATCH": "Le rigenerazioni gratuite sono disponibili solo per il disegno che hai appena animato.",

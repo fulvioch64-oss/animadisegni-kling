@@ -1,5 +1,5 @@
 const crypto = require('node:crypto');
-const { consumeGeneration, getVideo, saveVideo, walletGet, walletConsume, walletRefund } = require('./store.js');
+const { consumeGeneration, getVideo, saveVideo, walletGet, walletConsume, walletRefund, acquireLock, releaseLock } = require('./store.js');
 const { apiError, parseWalletId } = require('./wallet.js');
 const { renderLoopVideo, addAudioTrack } = require('./video-loop.js');
 const { generateVideoFromImage, buildPrompt } = require('./fal-video.js');
@@ -174,27 +174,64 @@ async function fetchKling(url, apiKey, options = {}) {
   return parseProviderResponse(response);
 }
 
+const GENERATION_LOCK_TTL_SECONDS = 20 * 60;
+
+// The credit is charged only once the provider has returned the video, never before.
+// Availability is checked up front and a per-wallet lock keeps concurrent requests from over-spending one credit.
 async function createDance(payload, clientIp) {
   const walletId = parseWalletId(payload?.walletId);
   const kind = await creditKindFor(payload, walletId);
-  const spent = await walletConsume(walletId, kind);
-  if (!spent.ok) {
-    throw kind === 'retry'
-      ? apiError('No free retries left for this drawing.', 402, 'NO_RETRY_CREDITS')
-      : apiError('No video credits left. Buy a credit package to continue.', 402, 'NO_CREDITS');
+  const available = await walletGet(walletId);
+  if ((kind === 'retry' ? available.retryCredits : available.mainCredits) <= 0) throw noCreditsError(kind);
+
+  const lockKey = `animadisegni:generation-lock:${walletId}`;
+  if (!(await acquireLock(lockKey, GENERATION_LOCK_TTL_SECONDS))) {
+    throw apiError('A video is already being generated for this account. Wait for it to finish.', 409, 'GENERATION_IN_PROGRESS');
   }
-  console.info(`[credits] Wallet ${walletId.slice(0, 8)}…: 1 ${kind} credit used (${spent.mainCredits} main / ${spent.retryCredits} retry left).`);
+  const wallet = { walletId, creditKind: kind, charged: false, deferRelease: false, release: () => releaseLock(lockKey).catch(() => {}) };
   try {
-    const result = await createDanceInternal(payload, clientIp, { walletId, creditKind: kind });
+    const result = await createDanceInternal(payload, clientIp, wallet);
     const saved = await getVideo(result.generationToken);
     return { ...result, audioUrl: trackUrl(saved?.audioFile), creditKind: kind, credits: await walletGet(walletId) };
   } catch (error) {
-    // The user is never charged for a generation that failed.
-    await walletRefund(walletId, kind).catch((refundError) => console.error('[credits] Refund failed:', refundError));
+    // Charged only after a successful provider answer; if anything fails afterwards the credit is returned.
+    if (wallet.charged) await walletRefund(walletId, kind).catch((refundError) => console.error('[credits] Refund failed:', refundError));
     throw error;
+  } finally {
+    if (!wallet.deferRelease) await wallet.release();
   }
 }
 
+function noCreditsError(kind) {
+  return kind === 'retry'
+    ? apiError('No free retries left for this drawing.', 402, 'NO_RETRY_CREDITS')
+    : apiError('No video credits left. Buy a credit package to continue.', 402, 'NO_CREDITS');
+}
+
+// Spends the credit after the provider has answered successfully; fails (nothing delivered) if it can no longer be paid.
+async function chargeCredit(generationToken, wallet) {
+  const spent = await walletConsume(wallet.walletId, wallet.creditKind);
+  if (!spent.ok) throw noCreditsError(wallet.creditKind);
+  wallet.charged = true;
+  await saveVideo(generationToken, { creditCharged: true, paid: true });
+  console.info(`[credits] Wallet ${wallet.walletId.slice(0, 8)}…: 1 ${wallet.creditKind} credit used after a successful generation (${spent.mainCredits} main / ${spent.retryCredits} retry left).`);
+}
+
+// Calls Fal.ai and guarantees a non-empty video URL; any failure or timeout is reported clearly and costs no credit.
+async function requestFalVideo(imageUrl, motionPreset, options) {
+  let url;
+  try {
+    url = await generateVideoFromImage(imageUrl, motionPreset, options);
+  } catch (error) {
+    if (!error.statusCode) error.statusCode = 502;
+    error.message = `${error.message} Nessun credito è stato scalato. / No credit was charged.`;
+    throw error;
+  }
+  if (typeof url !== 'string' || !url) {
+    throw apiError('Il servizio video non ha restituito il video. Nessun credito è stato scalato. / The video service returned no video. No credit was charged.', 502, 'GENERATION_FAILED');
+  }
+  return url;
+}
 // A retry reuses the exact same drawing of a previous generation owned by the same wallet; anything else is a new video.
 async function creditKindFor(payload, walletId) {
   if (payload.retryOfToken === undefined || payload.retryOfToken === null) return 'main';
@@ -212,27 +249,31 @@ function hashImage(dataUrl) {
 
 const activeGenerations = new Set();
 
-async function failGeneration(generationToken, error, { walletId, creditKind }) {
+async function failGeneration(generationToken, error, { walletId, creditKind, charged }) {
   console.error(`[generation:${generationToken}] Background generation failed:`, error?.message, error?.cause ?? '');
   await saveVideo(generationToken, {
     generationStatus: 'ERROR',
     errorMessage: error instanceof Error ? error.message : 'Errore durante la generazione.'
   }).catch((saveError) => console.error('[generation] Unable to save error state:', saveError));
-  // The user is never charged for a generation that failed.
-  await walletRefund(walletId, creditKind).catch((refundError) => console.error('[credits] Refund failed:', refundError));
+  // Only a credit that was actually charged is returned; before the charge nothing was spent.
+  if (charged) await walletRefund(walletId, creditKind).catch((refundError) => console.error('[credits] Refund failed:', refundError));
 }
 
 async function runFalGeneration(generationToken, imageUrl, motionPreset, options, wallet) {
   try {
-    const falVideoUrl = await generateVideoFromImage(imageUrl, motionPreset, options);
+    const falVideoUrl = await requestFalVideo(imageUrl, motionPreset, options);
+    await chargeCredit(generationToken, wallet);
     await saveVideo(generationToken, { sourceVideoUrl: falVideoUrl, generationStatus: 'RENDERING' });
     await renderAndSaveVideo(generationToken, falVideoUrl);
   } catch (error) {
     await failGeneration(generationToken, error, wallet);
+  } finally {
+    await wallet.release();
   }
 }
 
-async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMotionPreset, aspectRatio: rawAspectRatio, renderStyle: rawRenderStyle, background: rawBackground, card: rawCard, music: rawMusic }, clientIp, { walletId, creditKind }) {
+async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMotionPreset, aspectRatio: rawAspectRatio, renderStyle: rawRenderStyle, background: rawBackground, card: rawCard, music: rawMusic }, clientIp, wallet) {
+  const { walletId, creditKind } = wallet;
   const aspectRatio = normalizeAspectRatio(rawAspectRatio);
   const card = normalizeCard(rawCard);
   const validatedImage = validateImageUrl(rawImageUrl);
@@ -264,8 +305,8 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
     creditKind,
     audioFile,
     generationStatus: 'SUBMITTING',
-    // The credit has already been spent, so the HD (watermark-free) download is unlocked.
-    paid: true
+    // paid (HD, watermark-free download) is set only once the credit is charged.
+    paid: false
   });
   // The order id is the generation token; the exact Fal.ai inputs are kept so a free retry can replay them.
   await createOrder({
@@ -283,7 +324,8 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
   }).catch((error) => console.error(`[orders] Unable to create order ${generationToken}:`, error.message));
   if (useFal && process.env.VERCEL) {
     // Serverless functions are frozen once the response is sent, so the job must complete within the request.
-    const falVideoUrl = await generateVideoFromImage(imageUrl, motionPreset, { aspectRatio, renderStyle: rawRenderStyle, background: rawBackground });
+    const falVideoUrl = await requestFalVideo(imageUrl, motionPreset, { aspectRatio, renderStyle: rawRenderStyle, background: rawBackground });
+    await chargeCredit(generationToken, wallet);
     await saveVideo(generationToken, { sourceVideoUrl: falVideoUrl, generationStatus: 'RENDERING' });
     const videoUrl = await renderAndSaveVideo(generationToken, falVideoUrl);
     return { generationToken, taskId: null, status: 'COMPLETE', videoUrl, canPoll: false };
@@ -292,7 +334,8 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
     // Fal generation takes minutes: run it in the background and let the client poll, so no HTTP request stays open
     // (tunnels/proxies/browsers drop long-lived requests, which surfaced as "Couldn't reach /api/generate-dance").
     activeGenerations.add(generationToken);
-    runFalGeneration(generationToken, imageUrl, motionPreset, { aspectRatio, renderStyle: rawRenderStyle, background: rawBackground }, { walletId, creditKind })
+    wallet.deferRelease = true;
+    runFalGeneration(generationToken, imageUrl, motionPreset, { aspectRatio, renderStyle: rawRenderStyle, background: rawBackground }, wallet)
       .finally(() => activeGenerations.delete(generationToken));
     return { generationToken, taskId: null, status: 'PENDING', canPoll: true };
   }
@@ -313,6 +356,7 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
     throw requestError('Il gateway Kling non ha restituito un URL video o un ID task.', 502);
   }
 
+  await chargeCredit(generationToken, wallet);
   await saveVideo(generationToken, {
     taskId: normalized.taskId,
     motionPreset,
@@ -379,8 +423,8 @@ async function getDanceStatusInternal(generationToken) {
   if (!savedVideo.taskId) {
     if (savedVideo.generationStatus === 'SUBMITTING' && savedVideo.walletId) {
       // The server was restarted while the video was being generated: the job is lost.
-      await failGeneration(generationToken, new Error('La generazione è stata interrotta (server riavviato). Riprova: il credito è stato riaccreditato.'), { walletId: savedVideo.walletId, creditKind: savedVideo.creditKind });
-      return { generationToken, taskId: null, status: 'ERROR', error: 'La generazione è stata interrotta (server riavviato). Riprova: il credito è stato riaccreditato.', canPoll: false };
+      await failGeneration(generationToken, new Error('La generazione è stata interrotta (server riavviato). Riprova: nessun credito è stato scalato.'), { walletId: savedVideo.walletId, creditKind: savedVideo.creditKind, charged: savedVideo.creditCharged === true });
+      return { generationToken, taskId: null, status: 'ERROR', error: 'La generazione è stata interrotta (server riavviato). Riprova: nessun credito è stato scalato.', canPoll: false };
     }
     throw requestError('Task non trovato o non più disponibile.', 404);
   }

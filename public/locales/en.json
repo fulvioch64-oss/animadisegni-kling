@@ -144,6 +144,8 @@
   "packageRetries": "🎁 {count} free retries as a gift",
   "packageChoose": "Choose pack",
   "packageSimulate": "🧪 Simulate purchase (local)",
+  "apiError_GENERATION_IN_PROGRESS": "A video is already being generated. Wait for it to finish.",
+  "apiError_GENERATION_FAILED": "The video service returned no video. No credit was charged, please try again.",
   "apiError_NO_CREDITS": "You're out of video credits. Choose a pack to keep creating.",
   "apiError_NO_RETRY_CREDITS": "You're out of free retries. Choose a pack, or create a new video with a main credit.",
   "apiError_RETRY_MISMATCH": "Free retries are only available for the drawing you just animated.",
