@@ -725,6 +725,13 @@ btnRetry.addEventListener('click', () => {
   retryModal.showModal();
 });
 
+document.querySelectorAll('[data-open-dialog]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const dialog = document.getElementById(button.dataset.openDialog);
+    if (dialog && !dialog.open) dialog.showModal();
+  });
+});
+
 retryModal.addEventListener('close', () => {
   if (retryModal.returnValue === 'confirm') runFreeRetry();
   retryModal.returnValue = '';

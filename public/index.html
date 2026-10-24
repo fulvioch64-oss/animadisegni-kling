@@ -238,6 +238,34 @@
     </form>
   </dialog>
 
-  <footer><span data-i18n="footer">Made with love for little artists and the people who love them</span> <span aria-label="love" data-i18n-aria-label="loveLabel">💛</span></footer>
+  <dialog id="termsModal" class="packages-modal legal-modal" aria-labelledby="termsHeading">
+    <h2 id="termsHeading" data-i18n="termsHeading">Terms & Conditions</h2>
+    <h3 data-i18n="termsServiceTitle">Service</h3>
+    <p data-i18n="termsServiceText"></p>
+    <h3 data-i18n="termsRightsTitle">Rights & ownership</h3>
+    <p data-i18n="termsRightsText"></p>
+    <h3 data-i18n="termsResponsibilityTitle">User responsibility</h3>
+    <p data-i18n="termsResponsibilityText"></p>
+    <h3 data-i18n="termsRefundTitle">No cash refunds</h3>
+    <p data-i18n="termsRefundText"></p>
+    <form method="dialog" class="modal-actions"><button type="submit" class="btn-secondary" data-i18n="legalClose">Close</button></form>
+  </dialog>
+
+  <dialog id="faqModal" class="packages-modal legal-modal" aria-labelledby="faqHeading">
+    <h2 id="faqHeading" data-i18n="faqHeading">FAQ</h2>
+    <h3 data-i18n="faqQ1"></h3><p data-i18n="faqA1"></p>
+    <h3 data-i18n="faqQ2"></h3><p data-i18n="faqA2"></p>
+    <h3 data-i18n="faqQ3"></h3><p data-i18n="faqA3"></p>
+    <h3 data-i18n="faqQ4"></h3><p data-i18n="faqA4"></p>
+    <form method="dialog" class="modal-actions"><button type="submit" class="btn-secondary" data-i18n="legalClose">Close</button></form>
+  </dialog>
+
+  <footer>
+    <span data-i18n="footer">Made with love for little artists and the people who love them</span> <span aria-label="love" data-i18n-aria-label="loveLabel">💛</span>
+    <nav class="footer-links" data-i18n-aria-label="footerLinksLabel" aria-label="Legal and help">
+      <button type="button" class="footer-link" data-open-dialog="termsModal" aria-haspopup="dialog" data-i18n="terms">Terms & Conditions</button>
+      <button type="button" class="footer-link" data-open-dialog="faqModal" aria-haspopup="dialog" data-i18n="faq">FAQ</button>
+    </nav>
+  </footer>
 </body>
 </html>

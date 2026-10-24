@@ -193,6 +193,12 @@ button { touch-action: manipulation; }
 .package-badge { position: absolute; top: -13px; left: 50%; padding: 5px 12px; border-radius: 99px; background: var(--coral); color: #fff; font-size: 0.78rem; font-weight: 700; white-space: nowrap; transform: translateX(-50%); }
 @media (max-width: 560px) { .package-popular { transform: none; margin-top: 8px; } .btn-secondary.credits-buy { width: 100%; margin-left: 0; } }
 .download-video { display: block; margin-top: 9px; color: #fff; text-decoration: none; text-align: center; }
+.footer-links { display: flex; justify-content: center; gap: 18px; margin-top: 10px; }
+.footer-link { border: 0; background: none; padding: 4px 2px; color: var(--muted); font: inherit; text-decoration: underline; cursor: pointer; }
+.footer-link:hover, .footer-link:focus-visible { color: var(--ink); }
+.legal-modal { max-height: 85vh; overflow-y: auto; text-align: left; }
+.legal-modal h3 { margin: 14px 0 4px; font-size: 1.05rem; }
+.legal-modal p { margin: 0; line-height: 1.5; }
 footer { padding: 26px 12px 0; color: var(--muted); text-align: center; font-family: 'Patrick Hand', cursive; font-size: 1.1rem; }
 .hidden { display: none !important; }
 
