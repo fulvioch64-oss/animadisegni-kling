@@ -159,6 +159,7 @@ test('Stripe checkout: signed-in user gets a session built server-side from pack
   assert.equal(sent.body.get('line_items[0][price]'), 'price_family_test');
   assert.equal(sent.body.get('metadata[package_id]'), 'family');
   assert.ok(sent.body.get('metadata[wallet_id]'));
+  assert.equal(sent.body.get('client_reference_id'), sent.body.get('metadata[wallet_id]'));
   const bad = mockRes();
   await checkout({ method: 'POST', body: { packageId: 'nope' }, headers: { host: 'x', cookie } }, bad);
   assert.equal(bad.statusCode, 400);
@@ -167,6 +168,7 @@ test('Stripe checkout: signed-in user gets a session built server-side from pack
 test('Stripe webhook: verifies signature, credits once, rejects wrong amount', async () => {
   process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_secret';
   const hook = require('../api/stripe-webhook.js');
+  assert.equal(hook.config.api.bodyParser, false);
   const wallet = crypto.randomUUID();
   const sessionObj = (over = {}) => ({ id: `cs_${crypto.randomUUID()}`, payment_status: 'paid', currency: 'eur', amount_total: 999, metadata: { wallet_id: wallet, package_id: 'family' }, ...over });
   const deliver = async (session, { secret = process.env.STRIPE_WEBHOOK_SECRET, ts = Math.floor(Date.now() / 1000) } = {}) => {
@@ -187,6 +189,11 @@ test('Stripe webhook: verifies signature, credits once, rejects wrong amount', a
   assert.equal((await deliver(sessionObj(), { secret: 'wrong' })).statusCode, 401);
   assert.equal((await deliver(sessionObj(), { ts: 1000 })).statusCode, 401);
   assert.equal((await deliver(sessionObj({ amount_total: 1 }))).statusCode, 400);
+  const referenceOnlySession = sessionObj({ metadata: { package_id: 'family' }, client_reference_id: crypto.randomUUID() });
+  const referenceOnly = await deliver(referenceOnlySession);
+  assert.equal(referenceOnly.statusCode, 200);
+  assert.deepEqual(await store.walletGet(referenceOnlySession.client_reference_id), { mainCredits: 4, retryCredits: 2 });
+  assert.equal((await deliver(sessionObj({ metadata: { package_id: 'family', wallet_id: 'invalid' } }))).statusCode, 400);
   assert.equal((await deliver(sessionObj({ payment_status: 'unpaid' }))).body.pending, true);
   assert.deepEqual(await store.walletGet(wallet), { mainCredits: 4, retryCredits: 2 });
 });

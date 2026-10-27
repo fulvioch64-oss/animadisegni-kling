@@ -76,12 +76,16 @@ module.exports = async function handler(req, res) {
     }
     let walletId;
     try {
-      walletId = await resolveCreditWallet(parseWalletId(session.metadata?.wallet_id));
+      walletId = parseWalletId(session.metadata?.wallet_id || session.client_reference_id);
     } catch {
+      console.error(`[stripe-webhook] Session ${session.id} is missing a valid wallet_id metadata value or client_reference_id.`);
       return sendJson(res, 400, { error: 'The session has no valid wallet ID.' });
     }
 
     stage = 'grant-credits';
+    // Resolve wallets claimed during sign-in. Keep database failures outside the input-validation catch
+    // so Stripe receives 5xx and retries instead of treating a transient Neon error as invalid metadata.
+    walletId = await resolveCreditWallet(walletId);
     // Idempotent per session: a retried delivery never grants the package twice.
     const result = await grantPackage(walletId, pkg.id, `stripe:${session.id}`);
     await recordPaidOrder({ orderId: `stripe:${session.id}`, walletId, packageId: pkg.id, amountCents: pkg.priceCents, currency: CURRENCY });
@@ -93,3 +97,5 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 503, { error: 'Unable to process the webhook right now.' });
   }
 };
+
+module.exports.config = { api: { bodyParser: false } };

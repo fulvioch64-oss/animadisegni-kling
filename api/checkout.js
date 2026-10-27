@@ -1,5 +1,5 @@
 const { stripePriceIdFor } = require('./_lib/packages.js');
-const { requirePackage } = require('./_lib/wallet.js');
+const { parseWalletId, requirePackage } = require('./_lib/wallet.js');
 const { currentUser } = require('./_lib/auth.js');
 
 function sendJson(res, status, body) {
@@ -32,14 +32,15 @@ module.exports = async function handler(req, res) {
       return sendJson(res, 503, { error: 'Checkout not configured. Missing: PUBLIC_BASE_URL.', code: 'CHECKOUT_UNAVAILABLE' });
     }
 
-    const metadata = { wallet_id: user.walletId, user_id: user.userId, package_id: pkg.id };
+    const walletId = parseWalletId(user.walletId);
+    const metadata = { wallet_id: walletId, user_id: user.userId, package_id: pkg.id };
     const form = new URLSearchParams({
       mode: 'payment',
       'line_items[0][price]': priceId,
       'line_items[0][quantity]': '1',
       success_url: `${appUrl}/?purchase=success&package=${encodeURIComponent(pkg.id)}`,
       cancel_url: `${appUrl}/`,
-      client_reference_id: user.walletId
+      client_reference_id: walletId
     });
     for (const [key, value] of Object.entries(metadata)) {
       form.set(`metadata[${key}]`, value);
