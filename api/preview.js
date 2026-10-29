@@ -12,6 +12,11 @@ module.exports = async function handler(req, res) {
   }
   try {
     const video = await getVideo(token);
+    if (video?.previewRemoteUrl && /^https:\/\//.test(video.previewRemoteUrl)) {
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.setHeader('Location', video.previewRemoteUrl);
+      return res.status(302).end();
+    }
     if (!video?.generatedVideoPath) {
       return res.status(404).setHeader('Content-Type', 'application/json; charset=utf-8').end(JSON.stringify({ error: 'Video non trovato o non ancora pronto.' }));
     }

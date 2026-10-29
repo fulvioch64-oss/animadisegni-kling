@@ -173,4 +173,4 @@ async function saveImageAsPublicUrl(dataUrl, aspectRatio = DEFAULT_ASPECT_RATIO)
   }
 }
 
-module.exports = { uploadImage, saveImageAsPublicUrl, TUNNEL_HELP };
+module.exports = { uploadImage, saveImageAsPublicUrl, uploadFileToFalStorage, TUNNEL_HELP };

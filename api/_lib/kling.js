@@ -3,7 +3,7 @@ const { consumeGeneration, getVideo, saveVideo, walletGet, walletConsume, wallet
 const { apiError, parseWalletId } = require('./wallet.js');
 const { renderLoopVideo, addAudioTrack } = require('./video-loop.js');
 const { generateVideoFromImage, buildPrompt } = require('./fal-video.js');
-const { saveImageAsPublicUrl } = require('./image-upload.js');
+const { saveImageAsPublicUrl, uploadFileToFalStorage } = require('./image-upload.js');
 const { pickTrack, resolveTrackPath, trackUrl } = require('./music.js');
 const { normalizeAspectRatio } = require('./aspect-ratio.js');
 const { normalizeCard } = require('./card.js');
@@ -11,6 +11,20 @@ const { createOrder, setOrderVideoUrl } = require('./orders.js');
 
 function previewUrl(generationToken) {
   return `/api/preview?id=${encodeURIComponent(generationToken)}`;
+}
+
+// On Vercel /tmp is private to one function instance, so the next request (the player's GET) may land elsewhere and 404.
+// The rendered MP4s are therefore also stored on Fal storage (public CDN URL with range support) and served from there.
+async function persistRemotely(generationToken, filePath, label) {
+  if (!process.env.VERCEL || !process.env.FAL_KEY || !filePath) return null;
+  try {
+    const url = await uploadFileToFalStorage(filePath, 'video/mp4');
+    console.info(`[generation:${generationToken}] ${label} stored on Fal storage.`);
+    return url;
+  } catch (error) {
+    console.error(`[generation:${generationToken}] Unable to store the ${label} remotely:`, error?.message);
+    return null;
+  }
 }
 
 async function renderAndSaveVideo(generationToken, sourceVideoUrl) {
@@ -28,6 +42,8 @@ async function renderAndSaveVideo(generationToken, sourceVideoUrl) {
       console.error(`[generation:${generationToken}] Unable to add the music track:`, error.message);
     }
   }
+  updates.previewRemoteUrl = await persistRemotely(generationToken, generatedVideoPath, 'preview video');
+  if (updates.downloadVideoPath) updates.downloadRemoteUrl = await persistRemotely(generationToken, updates.downloadVideoPath, 'download video');
   await saveVideo(generationToken, updates);
   await setOrderVideoUrl(generationToken, videoUrl).catch((error) => console.error(`[orders] Unable to save the video URL for order ${generationToken}:`, error.message));
   console.info(`[generation:${generationToken}] Loop render complete; preview URL is ready.`);

@@ -14,6 +14,12 @@ module.exports = async function handler(req, res) {
     const video = await getVideo(token);
     if (!video?.videoUrl) return res.status(404).setHeader('Content-Type', 'application/json; charset=utf-8').end(JSON.stringify({ error: 'Video non trovato o scaduto.' }));
     if (video.paid !== true) return res.status(402).setHeader('Content-Type', 'application/json; charset=utf-8').end(JSON.stringify({ error: 'Pagamento non ancora verificato da LemonSqueezy.' }));
+    const remoteUrl = video.downloadRemoteUrl || video.previewRemoteUrl;
+    if (remoteUrl && /^https:\/\//.test(remoteUrl)) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Location', remoteUrl);
+      return res.status(302).end();
+    }
     if (video.downloadVideoPath) return await sendVideoFile(req, res, video.downloadVideoPath, true);
     if (video.generatedVideoPath) return await sendVideoFile(req, res, video.generatedVideoPath, true);
     res.setHeader('Cache-Control', 'no-store');
