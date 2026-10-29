@@ -97,9 +97,8 @@ async function renderPingPong(sourcePath, outputPath, token, aspectRatio, card, 
       `${cycleLabels.join('')}concat=n=${PING_PONG_CYCLES}:v=1:a=0,trim=duration=${OUTPUT_DURATION_SECONDS},setpts=PTS-STARTPTS[${cardAssets ? 'looped' : 'loop'}]`
     ];
           if (cardAssets) {
-            // The frame and the message are burned into every frame of the loop.
-            const text = cardAssets.drawtext ? `,${cardAssets.drawtext}` : '';
-            filterParts.push(`[looped][1:v]overlay=0:0:shortest=1${text}[loop]`);
+            // The frame PNG already contains the message: only the `overlay` filter is needed.
+            filterParts.push('[looped][1:v]overlay=0:0:shortest=1[loop]');
           }
           const filter = filterParts.join(';');
           const args = [

@@ -1,6 +1,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const zlib = require('node:zlib');
+const opentype = require('opentype.js');
+const sharp = require('sharp');
 
 const FONT_DIRECTORY = path.join(__dirname, 'fonts');
 const MAX_MESSAGE_LENGTH = 60;
@@ -291,31 +293,42 @@ function buildFrameImage(card, layout) {
   return encodePng(canvas.data, W, H);
 }
 
-// Writes the frame PNG, font and text lines into `directory` and returns FFmpeg filters that burn the card in.
-// File names are relative: FFmpeg must run with `directory` as its working directory, which avoids escaping
-// Windows drive letters inside filter arguments.
+const loadedFonts = new Map();
+
+function loadFont(file) {
+  if (!loadedFonts.has(file)) {
+    const data = fs.readFileSync(path.join(FONT_DIRECTORY, file));
+    loadedFonts.set(file, opentype.parse(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)));
+  }
+  return loadedFonts.get(file);
+}
+
+// The message is drawn as vector glyph outlines (no FFmpeg `drawtext`, which needs a libfreetype build that
+// serverless FFmpeg binaries do not ship) and composited into the frame PNG, so FFmpeg only needs `overlay`.
+async function burnMessageIntoFrame(framePng, card, layout) {
+  if (!layout.lines.length) return framePng;
+  const font = loadFont(CARD_FONTS[card.font].file);
+  const color = CARD_TEMPLATES[card.template].text.join(',');
+  const ascent = (font.ascender / font.unitsPerEm) * layout.fontSize;
+  const paths = layout.lines.map((line, i) => {
+    const x = (layout.width - font.getAdvanceWidth(line, layout.fontSize)) / 2;
+    const baseline = layout.bannerTop + 35 + i * layout.lineHeight + ascent;
+    return font.getPath(line, x, baseline, layout.fontSize).toPathData(2);
+  });
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${layout.width}" height="${layout.height}">`
+    + `<path d="${paths.join(' ')}" fill="rgb(${color})" stroke="rgb(${color})" stroke-width="2" stroke-linejoin="round"/></svg>`;
+  return sharp(framePng).composite([{ input: Buffer.from(svg) }]).png().toBuffer();
+}
+
+// Writes the frame PNG (message included) into `directory` and returns the FFmpeg fit filter.
+// File names are relative: FFmpeg must run with `directory` as its working directory.
 async function prepareCardAssets(card, size, directory) {
   const layout = layoutCard(card, size);
-  const theme = CARD_TEMPLATES[card.template];
-  const font = CARD_FONTS[card.font];
-  await fs.promises.writeFile(path.join(directory, 'card-frame.png'), buildFrameImage(card, layout));
-  const textColor = theme.text.map((value) => value.toString(16).padStart(2, '0')).join('');
-  const drawtexts = [];
-  if (layout.lines.length) {
-    await fs.promises.copyFile(path.join(FONT_DIRECTORY, font.file), path.join(directory, 'card-font.ttf'));
-    for (let i = 0; i < layout.lines.length; i += 1) {
-      const textFile = `card-line-${i}.txt`;
-      await fs.promises.writeFile(path.join(directory, textFile), layout.lines[i], 'utf8');
-      const y = layout.bannerTop + 35 + i * layout.lineHeight;
-      drawtexts.push(
-        `drawtext=fontfile=card-font.ttf:textfile=${textFile}:expansion=none:fontsize=${layout.fontSize}`
-        + `:fontcolor=0x${textColor}:borderw=2:bordercolor=0x${textColor}:x=(w-text_w)/2:y=${y}`
-      );
-    }
-  }
+  const frame = await burnMessageIntoFrame(buildFrameImage(card, layout), card, layout);
+  await fs.promises.writeFile(path.join(directory, 'card-frame.png'), frame);
   const fit = `scale=${size.width}:${layout.areaHeight}:force_original_aspect_ratio=decrease,`
     + `pad=${size.width}:${size.height}:(ow-iw)/2:(${layout.areaHeight}-ih)/2:white,setsar=1`;
-  return { layout, fit, drawtext: drawtexts.join(','), frameFile: 'card-frame.png' };
+  return { layout, fit, frameFile: 'card-frame.png' };
 }
 
 module.exports = { CARD_FONTS, CARD_TEMPLATES, MAX_MESSAGE_LENGTH, normalizeCard, layoutCard, prepareCardAssets };
