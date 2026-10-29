@@ -184,11 +184,25 @@ async function generateVideoFromImage(imageUrl, motionPreset, { referenceMotionV
     console.info(`[fal-video] Calling ${model.id} with payload:`, JSON.stringify({ input }));
     const result = await fal.subscribe(model.id, { input, logs: true, abortSignal: AbortSignal.timeout(FAL_TIMEOUT_MS) });
 
-    return result.data.video.url;
+    return extractVideoUrl(result);
   } catch (error) {
     console.error('[fal-video] generateVideoFromImage failed:', error?.status, error?.name, JSON.stringify(error?.body ?? error?.message));
     throw toFriendlyError(error);
   }
+}
+
+// Fal models return the video in slightly different shapes: check them in order and accept only a valid http(s) URL.
+function extractVideoUrl(result) {
+  const candidates = [result?.data?.video?.url, result?.data?.video_url, result?.data?.videos?.[0]?.url];
+  const url = candidates.find((value) => typeof value === 'string' && /^https?:\/\/\S+$/i.test(value.trim()));
+  if (!url) {
+    console.error('[fal-video] No valid video URL in the Fal.ai response:', JSON.stringify(result?.data));
+    const error = new Error('Fal.ai ha risposto senza un URL video valido. Nessun credito è stato scalato: riprova.');
+    error.statusCode = 502;
+    error.code = 'GENERATION_FAILED';
+    throw error;
+  }
+  return url.trim();
 }
 
 // Turns Fal/network failures into explicit messages for the frontend, keeping the original as `cause`.
