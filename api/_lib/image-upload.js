@@ -136,10 +136,10 @@ function configureFal() {
 }
 
 // Uploads to Fal's own storage so Fal never needs to reach this machine (no tunnel / PUBLIC_BASE_URL required).
-async function uploadFileToFalStorage(filePath) {
+async function uploadFileToFalStorage(filePath, contentType = 'image/jpeg') {
   const fal = configureFal();
   const buffer = await fs.promises.readFile(filePath);
-  return withTimeout(fal.storage.upload(new Blob([buffer], { type: 'image/jpeg' })), 60_000, 'Upload su Fal storage');
+  return withTimeout(fal.storage.upload(new Blob([buffer], { type: contentType })), 60_000, 'Upload su Fal storage');
 }
 
 // Illustrated scenes available in public/sfondi/ (key = `background` value sent by the client).
@@ -199,54 +199,59 @@ function compositeOnBackground(backgroundPath, subjectPngPath, outputPath, aspec
   return runFfmpeg(['-i', backgroundPath, '-i', subjectPngPath, '-filter_complex', filter, '-frames:v', '1', '-q:v', '2', outputPath], 'Unable to compose the subject on the background');
 }
 
-// Fits the image to the chosen aspect ratio and returns a URL the video provider can download:
+// Always cuts the subject out first (local removal, no Fal credits) and returns a URL the video provider can download:
 // Fal storage when FAL_KEY is set, otherwise public/uploads served through PUBLIC_BASE_URL.
-// With an illustrated background selected (and Fal available) the subject is cut out and composed onto the scene first.
+// The provider receives the transparent cut-out PNG, or the cut-out composed on the illustrated scene when one is selected.
+// If the cut-out fails the request fails: the original photo with its background is never sent as a fallback.
 async function saveImageAsPublicUrl(dataUrl, aspectRatio = DEFAULT_ASPECT_RATIO, background = null) {
   const { image, extension } = parseImageDataUrl(dataUrl);
   const ratio = normalizeAspectRatio(aspectRatio);
   const useFalStorage = Boolean(getFalKey());
   const backgroundPath = resolveBackgroundFile(background);
-  if (backgroundPath && !useFalStorage) {
-    console.warn('[image-upload] Sfondo illustrato ignorato: la rimozione dello sfondo richiede FAL_KEY.');
-  }
   const baseUrl = useFalStorage ? null : resolvePublicBaseUrl();
   const outputDirectory = useFalStorage ? os.tmpdir() : PUBLIC_UPLOAD_DIRECTORY;
   if (!useFalStorage) await removeExpiredLocalUploads();
   const id = crypto.randomUUID();
   const rawPath = path.join(outputDirectory, `${id}-source.${extension}`);
+  const fittedPath = path.join(outputDirectory, `${id}-fitted.jpg`);
   const cutoutPath = path.join(outputDirectory, `${id}-cutout.png`);
-  const filename = `${id}.jpg`;
-  const outputPath = path.join(outputDirectory, filename);
   const composedPath = path.join(outputDirectory, `${id}-composed.jpg`);
   await fs.promises.writeFile(rawPath, image, { flag: 'wx' });
   try {
-    await fitImageToAspectRatio(rawPath, outputPath, ratio);
-    if (useFalStorage) {
-      let uploadPath = outputPath;
-      if (backgroundPath) {
-        try {
-          await fs.promises.access(backgroundPath);
-          await removeBackgroundToFile(outputPath, cutoutPath);
-          await compositeOnBackground(backgroundPath, cutoutPath, composedPath, ratio);
-          uploadPath = composedPath;
-        } catch (error) {
-          // Clean fallback: the video is still generated from the image without cut-out/scene.
-          console.warn('[image-upload] Scontorno locale non riuscito, uso l’immagine originale senza sfondo illustrato:', error?.message);
-        }
-      }
+    await fitImageToAspectRatio(rawPath, fittedPath, ratio);
+    try {
+      await removeBackgroundToFile(fittedPath, cutoutPath);
+    } catch (error) {
+      console.error('[image-upload] Background removal failed:', error?.message);
+      throw inputError('Non sono riuscito a rimuovere lo sfondo dall’immagine. Nessun credito è stato scalato: riprova con un’altra immagine.', 502);
+    }
+    let uploadPath = cutoutPath;
+    let contentType = 'image/png';
+    if (backgroundPath) {
       try {
-        return await uploadFileToFalStorage(uploadPath);
+        await fs.promises.access(backgroundPath);
+        await compositeOnBackground(backgroundPath, cutoutPath, composedPath, ratio);
+        uploadPath = composedPath;
+        contentType = 'image/jpeg';
+      } catch (error) {
+        // The scene is optional: the transparent cut-out is still what gets sent, never the original photo.
+        console.warn('[image-upload] Composizione sullo sfondo illustrato non riuscita, uso il PNG scontornato trasparente:', error?.message);
+      }
+    }
+    if (useFalStorage) {
+      try {
+        return await uploadFileToFalStorage(uploadPath, contentType);
       } catch (error) {
         console.error('[image-upload] Fal storage upload failed:', error?.status, error?.message, JSON.stringify(error?.body ?? ''));
         throw inputError(`Upload dell’immagine su Fal storage non riuscito: ${describeFalError(error)}.`, 502);
       }
     }
+    const localName = contentType === 'image/png' ? `${id}.png` : `${id}.jpg`;
+    await fs.promises.copyFile(uploadPath, path.join(outputDirectory, localName));
+    return `${baseUrl}/uploads/${localName}`;
   } finally {
-    await Promise.all([rawPath, cutoutPath, composedPath, ...(useFalStorage ? [outputPath] : [])]
-      .map((file) => fs.promises.rm(file, { force: true })));
+    await Promise.all([rawPath, fittedPath, cutoutPath, composedPath].map((file) => fs.promises.rm(file, { force: true })));
   }
-  return `${baseUrl}/uploads/${filename}`;
 }
 
 module.exports = { uploadImage, saveImageAsPublicUrl, TUNNEL_HELP };

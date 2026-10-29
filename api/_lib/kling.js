@@ -282,12 +282,14 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
   const motionPreset = validateMotionPreset(rawMotionPreset);
   const useFal = Boolean(process.env.FAL_KEY);
   const { endpoint, apiKey } = useFal ? {} : getKlingConfig();
-  if (typeof clientIp !== 'string' || !clientIp.trim()) {
+  // The per-IP quota (4/day, 10/month) is off by default: only credits limit generation. Set ENFORCE_IP_QUOTA=true to re-enable it.
+  const enforceIpQuota = process.env.ENFORCE_IP_QUOTA === 'true';
+  if (enforceIpQuota && (typeof clientIp !== 'string' || !clientIp.trim())) {
     throw requestError('Indirizzo IP non disponibile: impossibile applicare i limiti di generazione.', 503);
   }
-  const quota = process.env.NODE_ENV !== 'production'
-    ? { allowed: true }
-    : await consumeGeneration(clientIp);
+  const quota = enforceIpQuota
+    ? await consumeGeneration(clientIp)
+    : { allowed: true };
   if (!quota.allowed) {
     const error = requestError('Hai raggiunto il limite di 4 video al giorno o 10 video al mese per questo indirizzo IP.', 429);
     error.quota = quota;
