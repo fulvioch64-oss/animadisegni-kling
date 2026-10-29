@@ -104,9 +104,9 @@
     </div>
 
     <section class="dev-card" aria-labelledby="devHeading">
-      <div><h2 id="devHeading" data-i18n="editorHeading">🎬 Make your greeting card move</h2><p data-i18n="editorDescription">Each new video uses 1 credit. Retries of the same drawing use your free retry credits.</p></div>
+      <div><h2 id="devHeading" data-i18n="editorHeading">🎬 Make your greeting card move</h2><p data-i18n="editorDescription">Each new card uses 1 credit. Retries of the same drawing use your free retry credits.</p></div>
       <div class="credits-bar" aria-live="polite">
-        <span class="credit-pill"><strong id="mainCreditsValue">0</strong> <span data-i18n="creditsMain">HD videos</span></span>
+        <span class="credit-pill"><strong id="mainCreditsValue">0</strong> <span data-i18n="creditsMain">HD cards</span></span>
         <span class="credit-pill"><strong id="retryCreditsValue">0</strong> <span data-i18n="creditsRetry">free retries</span></span>
         <button type="button" id="btnBuyCredits" class="btn-secondary credits-buy" data-i18n="buyCredits">Buy credits</button>
       </div>
@@ -120,7 +120,7 @@
         </select>
       </div>
       <fieldset class="form-group aspect-group">
-        <legend data-i18n="aspectLabel">Video format</legend>
+        <legend data-i18n="aspectLabel">Card format</legend>
         <label class="aspect-option">
           <input type="radio" name="aspectRatio" value="9:16" checked>
           <span class="aspect-box aspect-vertical" aria-hidden="true"></span>
@@ -193,7 +193,7 @@
           <div class="card-preview-banner hidden" id="cardPreviewBanner"></div>
         </div>
       </fieldset>
-      <button type="button" id="btnTest" class="btn-secondary" disabled data-i18n="createPreview">✨ Create my animated video</button>
+      <button type="button" id="btnTest" class="btn-secondary" disabled data-i18n="createPreview">✨ Create my Magic Card</button>
       <p id="testStatus" class="status" role="status" aria-live="polite"></p>
       <div id="generationProgress" class="generation-progress hidden" aria-live="polite">
         <div class="progress-row">
@@ -210,8 +210,8 @@
         </div>
         <section id="offerCard" class="offer-card hidden" aria-labelledby="offerHeading">
           <span class="offer-sparkle" aria-hidden="true">🎁</span>
-          <div class="offer-copy"><span class="offer-label" data-i18n="offerLabel">YOUR ANIMATED CARD IS READY</span><h2 id="offerHeading" data-i18n="offerHeading">Your HD video is ready</h2><p data-i18n="offerDescription">Download it without a watermark. Not happy with the result? Use a free retry on the same drawing.</p></div>
-          <a id="downloadVideo" class="download-video btn-primary hidden" href="#" data-i18n="downloadButton">⬇️ Download HD video</a>
+          <div class="offer-copy"><span class="offer-label" data-i18n="offerLabel">YOUR ANIMATED CARD IS READY</span><h2 id="offerHeading" data-i18n="offerHeading">Your HD card is ready</h2><p data-i18n="offerDescription">Download it without a watermark. Not happy with the result? Use a free retry on the same drawing.</p></div>
+          <a id="downloadVideo" class="download-video btn-primary hidden" href="#" data-i18n="downloadButton">⬇️ Download HD card</a>
           <button type="button" id="btnRetry" class="btn-secondary" data-i18n="retryButton">🔄 Regenerate for free (second try)</button>
           <p id="checkoutStatus" class="status" role="status" aria-live="polite"></p>
         </section>
@@ -222,7 +222,7 @@
   <dialog id="packagesModal" class="packages-modal" aria-labelledby="packagesHeading">
     <form method="dialog" class="packages-close"><button type="submit" class="modal-close" aria-label="Close" data-i18n-aria-label="closeLabel">✕</button></form>
     <h2 id="packagesHeading" data-i18n="packagesHeading">Choose your credit pack</h2>
-    <p class="packages-intro" data-i18n="packagesIntro">Each credit makes one HD video from a drawing. Free retries let you regenerate the same drawing if you're not happy.</p>
+    <p class="packages-intro" data-i18n="packagesIntro">Each credit makes one HD card from a drawing. Free retries let you regenerate the same drawing if you're not happy.</p>
     <div id="packagesGrid" class="packages-grid" role="list"></div>
     <p id="packagesStatus" class="status" role="status" aria-live="polite"></p>
     <p class="packages-note" data-i18n="packagesNote">One-time payment, no subscription. Secure checkout by LemonSqueezy.</p>
@@ -231,7 +231,7 @@
 
   <dialog id="retryModal" class="packages-modal retry-modal" aria-labelledby="retryModalHeading">
     <h2 id="retryModalHeading" data-i18n="retryModalHeading">Free second try</h2>
-    <p data-i18n="retryModalText">Every video includes a free second chance! Using it will regenerate the video with the exact same parameters and style.</p>
+    <p data-i18n="retryModalText">Every card includes a free second chance! Using it will regenerate the card with the exact same parameters and style.</p>
     <form method="dialog" class="modal-actions">
       <button type="submit" value="cancel" class="btn-secondary" data-i18n="retryModalCancel">Cancel</button>
       <button type="submit" value="confirm" id="btnRetryConfirm" class="btn-primary" data-i18n="retryModalConfirm">Regenerate for free</button>

@@ -106,17 +106,17 @@ function normalizeStyle(value) {
   return typeof value === 'string' ? value.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
 }
 
-function buildPrompt(motionPreset, renderStyle, background) {
-  const dance = DANCE_PROMPTS[normalizeStyle(motionPreset)] || DEFAULT_DANCE;
-  const style = normalizeRenderStyle(renderStyle);
-  const scene = BACKGROUNDS[normalizeBackground(background)];
-  const quality = (style === 'real_photo' ? PHOTO_QUALITY_CLAUSES : QUALITY_CLAUSES).replace('{BGQ}', scene.quality);
-  return `${INTROS[style].replace('{BG}', scene.bg)} ${dance} The movements are smooth, rhythmic and full of happiness, ${quality}, high quality.`;
+// The product is an animated greeting card: the model animates a card opening to reveal the uploaded drawing.
+// Music/style/scene choices no longer alter the prompt (music is mixed in later by FFmpeg).
+const CARD_OPENING_PROMPT = 'An animated vertical greeting card smoothly opening up from the center to reveal a children\'s drawing inside. Magical atmospheric lighting, clean paper texture, no text, no letters, no written words, no extra scene elements.';
+const CARD_NEGATIVE_PROMPT = 'text, letters, words, captions, watermark, logo, extra objects, extra characters, blurry, distorted drawing';
+
+function buildPrompt() {
+  return CARD_OPENING_PROMPT;
 }
 
-function buildNegativePrompt(renderStyle, background) {
-  const scene = BACKGROUNDS[normalizeBackground(background)];
-  return [NEGATIVE_PROMPTS[normalizeRenderStyle(renderStyle)], scene.negative].filter(Boolean).join(', ');
+function buildNegativePrompt() {
+  return CARD_NEGATIVE_PROMPT;
 }
 
 function resolveModel() {
