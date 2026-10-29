@@ -2,13 +2,20 @@ const { fal } = require('@fal-ai/client');
 const { DEFAULT_ASPECT_RATIO } = require('./aspect-ratio.js');
 const { TUNNEL_HELP } = require('./image-upload.js');
 
-const DEFAULT_MODEL = 'v1.5-standard';
+const DEFAULT_MODEL = 'v2.5-turbo-standard';
 const FAL_TIMEOUT_MS = 8 * 60 * 1000;
 
 // Each model declares how its payload is built. Fields not listed in the Fal schema (e.g. motion_strength,
 // aspect_ratio for v3) are deliberately not sent, since Fal rejects unknown/invalid inputs.
 // `motionVideoField` is the input name for a reference/guide dance video; null while no model supports it.
 const MODELS = {
+  'v2.5-turbo-standard': {
+    id: 'fal-ai/kling-video/v2.5-turbo/standard/image-to-video',
+    imageField: 'image_url',
+    motionVideoField: null,
+    aspectRatioField: 'aspect_ratio',
+    extraInput: { cfg_scale: 0.5 }
+  },
   'v1.5-standard': {
     id: 'fal-ai/kling-video/v1.5/standard/image-to-video',
     imageField: 'image_url',
