@@ -278,7 +278,7 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
   const card = normalizeCard(rawCard);
   const validatedImage = validateImageUrl(rawImageUrl);
   const imageHash = hashImage(validatedImage);
-  const imageUrl = await saveImageAsPublicUrl(validatedImage, aspectRatio, typeof rawBackground === 'string' ? rawBackground : null);
+  const imageUrl = await saveImageAsPublicUrl(validatedImage, aspectRatio);
   const motionPreset = validateMotionPreset(rawMotionPreset);
   const useFal = Boolean(process.env.FAL_KEY);
   const { endpoint, apiKey } = useFal ? {} : getKlingConfig();
