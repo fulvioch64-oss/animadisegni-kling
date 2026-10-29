@@ -87,7 +87,7 @@
   "renderStyleLabel": "Stile dell'animazione",
   "renderStyleFaithful": "Faithful Drawing (disegno originale, ritaglio 2.5D)",
   "renderStyleClaymation": "3D Cartoon / Claymation",
-  "renderStyleRealPhoto": "Real Draw / Real Person",
+  "renderStyleRealPhoto": "Real Draw",
   "cropperTitle": "Centra il soggetto",
   "cropperHint": "Trascina per spostare, usa il cursore o la rotellina per lo zoom.",
   "cropperZoomIn": "Ingrandisci",
