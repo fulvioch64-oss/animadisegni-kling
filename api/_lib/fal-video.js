@@ -38,59 +38,30 @@ const MODELS = {
   }
 };
 
-const QUALITY_CLAUSES = "without changing the character's appearance, preserving original crayon and marker texture, {BGQ}, smooth continuous motion, high frame rate, fluid animation";
-const PHOTO_QUALITY_CLAUSES = "without changing the person's appearance or facial identity, {BGQ}, smooth continuous motion, high frame rate, fluid animation";
+// Prompts per render style. 'real_photo' is the "Real Draw" option of the UI; 'faithful' is accepted as an alias.
+// {DANCE} is replaced with the dance action of the selected music track.
 const INTROS = {
-  faithful: "Animate this child's drawing as a 3D textured papercraft figurine with realistic depth, while strictly keeping 100% of the original felt-tip pen texture, crayon lines, and exact drawn face features. The character acts as a solid puppet painted with the original child's drawing, dancing smoothly {BG} without morphing.",
-  real_photo: "Animate this real photo into a full-body 3D dancing avatar, strictly preserving 100% of the facial identity, skin tone, hair, and original features from the photo. The avatar dances smoothly {BG} with realistic lighting.",
-  claymation: "Transform this child's drawing into a 3D claymation character, a clay figure with rounded volume, while keeping it faithful to the original child's artwork. Preserve the original shapes, asymmetrical hand-drawn lines, and original coloring. The character has rounded 3D depth and volume when turning, like an authentic handmade plasticine figurine crafted from a child's imagination. Placed {BG}, smooth 3D animation, happy dance movement."
+  real_photo: "2D character animation of a children's drawing on a clean paper background. The character performs a {DANCE}. Keep the original illustration lines intact, smooth motion, no background generation, no extra scene elements, no warping.",
+  claymation: "3D claymation character animation of a children's illustration, bringing the character into a vibrant 3D animated style. The character performs a {DANCE}. Smooth motion, clean environment, high quality render."
 };
-const NEGATIVE_PROMPTS = {
-  faithful: 'smooth plastic, claymation, redesigned features, realistic human face, 2D flat morphing, blurry, distorted',
-  real_photo: 'drawing, crayon, marker lines, cartoon, claymation, papercraft, distorted face, extra limbs, background noise',
-  claymation: 'flat 2D, flat paper cutout, thin 2D sheet, overly polished 3D render, smooth digital vector art, realistic human anatomy, background changes, blurry, jerky movement'
-};
+INTROS.faithful = INTROS.real_photo;
+const NEGATIVE_PROMPT = 'text, letters, watermark, extra limbs, page splitting, card opening, frame morphing, camera movement, blurry, low resolution, distortion, background generation';
 const DEFAULT_RENDER_STYLE = 'real_photo';
 
-// Illustrated scenes (files in public/sfondi/). Fal image-to-video takes a single start image, so the scene is described in the prompt.
-const BACKGROUNDS = {
-  none: { bg: 'on a clean, pure white background', quality: 'white background', negative: '' },
-  stanza_giochi: {
-    bg: 'inside the colorful illustrated children\'s playroom already present in the input image, keeping that playroom background exactly as it is, static and unchanged, never fading to white and never showing the original photo background',
-    quality: 'the illustrated playroom background stays unchanged throughout',
-    negative: 'white background, changing background, original photo background, background dissolve'
-  },
-  palco_incantato: {
-    bg: 'on the magical enchanted illustrated stage already present in the input image, keeping that stage background exactly as it is, static and unchanged, never fading to white and never showing the original photo background',
-    quality: 'the illustrated enchanted stage background stays unchanged throughout',
-    negative: 'white background, changing background, original photo background, background dissolve'
-  },
-  palco_neon: {
-    bg: 'on the vibrant illustrated neon concert stage already present in the input image, keeping that stage background exactly as it is, static and unchanged, never fading to white and never showing the original photo background',
-    quality: 'the illustrated neon stage background stays unchanged throughout',
-    negative: 'white background, changing background, original photo background, background dissolve'
-  }
-};const DEFAULT_BACKGROUND = 'none';
-
-function normalizeRenderStyle(value) {
-  return value in INTROS ? value : DEFAULT_RENDER_STYLE;
-}
-
-function normalizeBackground(value) {
-  return typeof value === 'string' && Object.hasOwn(BACKGROUNDS, value) ? value : DEFAULT_BACKGROUND;
-}
-
-// To add a music genre, add one entry here (key = motionPreset value sent by the client, normalized to lowercase letters/digits).
+// Dance action per music style (key = motionPreset sent by the client, normalized to lowercase letters/digits).
+// To add a music genre, add one entry here.
 const DANCE_PROMPTS = {
-  reggaeton: 'It dances reggaeton with a bouncy rhythmic groove: hip sways, shoulder rolls, playful steps and a happy spin.',
-  disco: 'It dances to upbeat 1980s Italian-style disco pop: gentle side steps, clapping hands, bouncing on the feet, spinning once and waving to the audience.',
-  hiphop: 'It dances hip-hop with playful bounce: rhythmic arm swings, small hops, a cheerful groove and a confident smile.',
-  babydance: 'It does a cute baby dance: tiny bouncy steps, wobbling side to side, waving both hands and giggling with excitement.',
-  salsa: 'It dances salsa with lively footwork: quick side steps, hip movement, a twirl and joyful arm gestures.',
-  ballet: 'It dances an elegant, light ballet: graceful arm movements, tiptoe steps, a gentle pirouette and a happy bow.',
-  waltz: 'It dances an elegant, graceful waltz in three-beat time: gliding turning steps, gentle swaying, arms held in a soft waltz pose, a slow twirl and a happy bow.',
-  relax: 'It dances slowly and calmly to a gentle waltz: soft swaying from side to side, slow arm movements, a gentle turn and a peaceful smile.',
-  sweet: 'It dances tenderly and emotionally: slow gentle sways, hands held to the heart, a soft twirl and a warm, loving smile.'
+  reggaeton: 'bouncy reggaeton dance with a rhythmic groove: hip sways, shoulder rolls, playful steps and a happy spin',
+  disco: 'classic upbeat 1980s Italian-style disco pop dance: gentle side steps, clapping hands, bouncing on the feet, spinning once and waving to the audience',
+  hiphop: 'playful hip-hop dance with bounce: rhythmic arm swings, small hops, a cheerful groove and a confident smile',
+  pop: 'catchy pop dance: energetic steps, arm waves, a happy spin and a bright smile',
+  latin: 'lively latin dance with quick footwork: side steps, hip movement, a twirl and joyful arm gestures',
+  babydance: 'cute baby dance: tiny bouncy steps, wobbling side to side, waving both hands and giggling with excitement',
+  salsa: 'lively salsa dance with quick footwork: side steps, hip movement, a twirl and joyful arm gestures',
+  ballet: 'elegant, light ballet dance: graceful arm movements, tiptoe steps, a gentle pirouette and a happy bow',
+  waltz: 'graceful waltz in three-beat time: gliding turning steps, gentle swaying, arms held in a soft waltz pose, a slow twirl and a happy bow',
+  relax: 'slow, calm dance to a gentle waltz: soft swaying from side to side, slow arm movements, a gentle turn and a peaceful smile',
+  sweet: 'tender, emotional dance: slow gentle sways, hands held to the heart, a soft twirl and a warm, loving smile'
 };
 // Unified "style + music" ids (lowercase letters/digits after normalizeStyle) reuse the existing prompts.
 const DANCE_ALIASES = {
@@ -100,23 +71,23 @@ const DANCE_ALIASES = {
   gentlewaltz: 'waltz'
 };
 Object.entries(DANCE_ALIASES).forEach(([alias, target]) => { DANCE_PROMPTS[alias] = DANCE_PROMPTS[target]; });
-const DEFAULT_DANCE = 'It happily dances to an upbeat, joyful rhythm with cheerful family-party energy: gentle side steps, clapping hands, bouncing on the feet, spinning once, waving and smiling with excitement.';
+const DEFAULT_DANCE = 'joyful dance to an upbeat rhythm with cheerful family-party energy: gentle side steps, clapping hands, bouncing on the feet, spinning once, waving and smiling with excitement';
 
 function normalizeStyle(value) {
   return typeof value === 'string' ? value.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
 }
 
-// The product is an animated greeting card: the model animates a card opening to reveal the uploaded drawing.
-// Music/style/scene choices no longer alter the prompt (music is mixed in later by FFmpeg).
-const CARD_OPENING_PROMPT = 'An animated vertical greeting card smoothly opening up from the center to reveal a children\'s drawing inside. Magical atmospheric lighting, clean paper texture, no text, no letters, no written words, no extra scene elements.';
-const CARD_NEGATIVE_PROMPT = 'text, letters, words, captions, watermark, logo, extra objects, extra characters, blurry, distorted drawing';
+function normalizeRenderStyle(value) {
+  return typeof value === 'string' && Object.hasOwn(INTROS, value) ? value : DEFAULT_RENDER_STYLE;
+}
 
-function buildPrompt() {
-  return CARD_OPENING_PROMPT;
+function buildPrompt(motionPreset, renderStyle) {
+  const dance = DANCE_PROMPTS[normalizeStyle(motionPreset)] || DEFAULT_DANCE;
+  return INTROS[normalizeRenderStyle(renderStyle)].replace('{DANCE}', dance);
 }
 
 function buildNegativePrompt() {
-  return CARD_NEGATIVE_PROMPT;
+  return NEGATIVE_PROMPT;
 }
 
 function resolveModel() {
@@ -154,7 +125,7 @@ async function assertImageReachable(imageUrl) {
   }
 }
 
-async function generateVideoFromImage(imageUrl, motionPreset, { referenceMotionVideoUrl = null, aspectRatio = DEFAULT_ASPECT_RATIO, renderStyle = DEFAULT_RENDER_STYLE, background = DEFAULT_BACKGROUND } = {}) {
+async function generateVideoFromImage(imageUrl, motionPreset, { referenceMotionVideoUrl = null, aspectRatio = DEFAULT_ASPECT_RATIO, renderStyle = DEFAULT_RENDER_STYLE } = {}) {
   try {
     const falKey = getFalKey();
     console.log('FAL_KEY caricata:', falKey ? 'Presente' : 'Mancante');
@@ -171,8 +142,8 @@ async function generateVideoFromImage(imageUrl, motionPreset, { referenceMotionV
     const model = resolveModel();
     const input = {
       [model.imageField]: imageUrl,
-      prompt: buildPrompt(motionPreset, renderStyle, background),
-      negative_prompt: buildNegativePrompt(renderStyle, background),
+      prompt: buildPrompt(motionPreset, renderStyle),
+      negative_prompt: buildNegativePrompt(),
       duration: '5',
       ...model.extraInput
     };
@@ -238,4 +209,4 @@ function toFriendlyError(error) {
   return friendly;
 }
 
-module.exports = { generateVideoFromImage, buildPrompt, DANCE_PROMPTS };
+module.exports = { generateVideoFromImage, buildPrompt, buildNegativePrompt };

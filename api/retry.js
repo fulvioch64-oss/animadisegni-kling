@@ -52,8 +52,7 @@ module.exports = async function handler(req, res) {
     // Exactly the same inputs as the original generation.
     const falVideoUrl = await generateVideoFromImage(params.image, params.motionPreset, {
       aspectRatio: params.aspectRatio,
-      renderStyle: params.style ?? undefined,
-      background: params.background ?? undefined
+      renderStyle: params.style ?? undefined
     });
     await saveVideo(retryToken, { sourceVideoUrl: falVideoUrl, generationStatus: 'RENDERING' });
     const videoUrl = await renderAndSaveVideo(retryToken, falVideoUrl);

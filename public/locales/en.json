@@ -86,7 +86,7 @@
   "aspectSquare": "1:1 Square (Feed & WhatsApp)",
   "renderStyleLabel": "Animation style",
   "renderStyleFaithful": "Faithful Drawing (original drawing, 2.5D cutout)",
-  "renderStyleClaymation": "3D Cartoon / Claymation",
+  "renderStyleClaymation": "3D Claymation",
   "renderStyleRealPhoto": "Real Draw",
   "cropperTitle": "Center your subject",
   "cropperHint": "Drag to move, use the slider or mouse wheel to zoom.",
