@@ -1,14 +1,25 @@
-const supportedLocales = new Set(['en', 'it']);
+const supportedLocales = new Set(['en', 'it', 'es']);
+const DEFAULT_LOCALE = 'en';
 const localeCache = new Map();
 const localeStorageKey = 'littleMovesLocale';
+
+// Saved choice first, then the browser languages (e.g. "es-MX" -> "es"), otherwise English.
+function detectBrowserLocale() {
+  const candidates = navigator.languages?.length ? navigator.languages : [navigator.language];
+  for (const candidate of candidates) {
+    const base = String(candidate || '').toLowerCase().split('-')[0];
+    if (supportedLocales.has(base)) return base;
+  }
+  return DEFAULT_LOCALE;
+}
 
 function readSavedLocale() {
   try {
     const savedLocale = localStorage.getItem(localeStorageKey);
-    return supportedLocales.has(savedLocale) ? savedLocale : 'en';
+    return supportedLocales.has(savedLocale) ? savedLocale : detectBrowserLocale();
   } catch (error) {
     console.error('Unable to read saved language preference.', error);
-    return 'en';
+    return detectBrowserLocale();
   }
 }
 
