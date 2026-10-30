@@ -192,12 +192,63 @@ async function completeProgress() {
   generationProgress.classList.add('hidden');
 }
 
+// Screen Wake Lock: keeps the phone screen on while a video is being generated. The browser drops the lock
+// whenever the tab is hidden, so it is requested again when the page becomes visible.
+let wakeLock = null;
+let wakeLockWanted = false;
+
+async function acquireWakeLock() {
+  wakeLockWanted = true;
+  if (!('wakeLock' in navigator) || wakeLock || document.visibilityState !== 'visible') return;
+  try {
+    const lock = await navigator.wakeLock.request('screen');
+    if (!wakeLockWanted) {
+      lock.release().catch(() => {});
+      return;
+    }
+    wakeLock = lock;
+    lock.addEventListener('release', () => {
+      if (wakeLock === lock) wakeLock = null;
+    });
+  } catch (error) {
+    console.warn('Unable to keep the screen awake.', error);
+  }
+}
+
+function releaseWakeLock() {
+  wakeLockWanted = false;
+  const lock = wakeLock;
+  wakeLock = null;
+  if (lock) lock.release().catch(() => {});
+}
+
+// Lets the polling loop check the job immediately when the page wakes up instead of waiting for the next tick.
+let wakePolling = null;
+function waitForNextPoll(ms) {
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(done, ms);
+    function done() {
+      window.clearTimeout(timer);
+      if (wakePolling === done) wakePolling = null;
+      resolve();
+    }
+    wakePolling = done;
+  });
+}
+
 async function waitForGeneration(token) {
-  const deadline = Date.now() + 10 * 60 * 1000;
+  const deadline = Date.now() + 15 * 60 * 1000;
   let polls = 0;
   while (Date.now() < deadline) {
-    await wait(5000);
-    const result = await callJsonApi(`/api/generate-dance?generationToken=${encodeURIComponent(token)}`);
+    await waitForNextPoll(5000);
+    let result;
+    try {
+      result = await callJsonApi(`/api/generate-dance?generationToken=${encodeURIComponent(token)}`);
+    } catch (error) {
+      // A sleeping phone or a flaky connection is not a failed job: keep asking until the server answers.
+      if (error?.network) continue;
+      throw error;
+    }
     polls += 1;
     updateProgress(5 + polls * 4);
     if (result.status === 'COMPLETE') return result;
@@ -649,7 +700,9 @@ async function callJsonApi(url, { method = 'GET', body } = {}) {
       throw new Error(t('errorServiceTimeout'));
     }
     console.error(`[api] Network error calling ${method} ${new URL(url, window.location.href).href}:`, error);
-    throw new Error(t('errorContactService', { url }));
+    const networkError = new Error(t('errorContactService', { url }));
+    networkError.network = true;
+    throw networkError;
   } finally {
     window.clearTimeout(timeoutId);
   }
@@ -739,6 +792,7 @@ async function runFreeRetry() {
   const orderId = generationToken;
   if (!orderId) return;
   generationRunning = true;
+  acquireWakeLock();
   btnTest.disabled = true;
   setRetryButton('retryRunning', true);
   checkoutStatus.classList.remove('status-error');
@@ -769,6 +823,7 @@ async function runFreeRetry() {
     }
   } finally {
     generationRunning = false;
+    releaseWakeLock();
     btnTest.disabled = !selectedPhoto;
   }
 }
@@ -789,6 +844,7 @@ async function startGeneration(isRetry) {
     return;
   }
   generationRunning = true;
+  acquireWakeLock();
   btnTest.disabled = true;
   setRetryButton('retryButton', true);
   testStatus.textContent = '';
@@ -801,6 +857,7 @@ async function startGeneration(isRetry) {
   resultVideo.load();
   downloadVideo.classList.add('hidden');
   generationToken = null;
+  sessionStorage.removeItem(TOKEN_KEY);
   testStatus.classList.remove('status-error');
   startProgress();
 
@@ -830,43 +887,112 @@ async function startGeneration(isRetry) {
         : t('statusTaskSubmitted');
       return;
     }
-    const data = started;
-    const videoUrl = validVideoUrl(data.videoUrl);
-    if (!videoUrl) throw new Error(t('errorVideoUrl'));
-
-    await completeProgress();
-    resultVideo.src = videoUrl;
-    setResultAudio(data.audioUrl);
-    resultVideo.load();
-    playResultVideo();
-    resultBox.classList.remove('hidden');
-    offerCard.classList.remove('hidden');
-    downloadVideo.href = `/api/download?id=${encodeURIComponent(generationToken)}`;
-    downloadVideo.classList.remove('hidden');
-    testStatus.textContent = t('statusVideoReady');
-    if (data.credits) setCredits(data.credits);
-    else await refreshCredits();
+    await presentResult(started);
   } catch (error) {
-    stopProgress();
-    resultVideo.pause();
-    resultVideo.removeAttribute('src');
-    resultVideo.load();
-    resultBox.classList.add('hidden');
-    offerCard.classList.add('hidden');
-    testStatus.textContent = error instanceof Error ? error.message : t('errorGenerationService');
-    testStatus.classList.add('status-error');
-    console.error('Animation generation failed.', error);
-    if (error?.code === 'AUTH_REQUIRED') promptLogin();
-    else if (error?.code === 'NO_CREDITS' || error?.code === 'NO_RETRY_CREDITS') {
-      refreshCredits().catch(() => {});
-      openPackages(testStatus.textContent);
-    }
+    showGenerationError(error);
   } finally {
     generationRunning = false;
+    releaseWakeLock();
     btnTest.disabled = !selectedPhoto;
     btnRetry.disabled = false;
   }
 }
+
+async function presentResult(data) {
+  const videoUrl = validVideoUrl(data.videoUrl);
+  if (!videoUrl) throw new Error(t('errorVideoUrl'));
+
+  await completeProgress();
+  resultVideo.src = videoUrl;
+  setResultAudio(data.audioUrl);
+  resultVideo.load();
+  playResultVideo();
+  resultBox.classList.remove('hidden');
+  offerCard.classList.remove('hidden');
+  downloadVideo.href = `/api/download?id=${encodeURIComponent(generationToken)}`;
+  downloadVideo.classList.remove('hidden');
+  testStatus.classList.remove('status-error');
+  testStatus.textContent = t('statusVideoReady');
+  if (data.credits) setCredits(data.credits);
+  else await refreshCredits();
+}
+
+function showGenerationError(error) {
+  stopProgress();
+  resultVideo.pause();
+  resultVideo.removeAttribute('src');
+  resultVideo.load();
+  resultBox.classList.add('hidden');
+  offerCard.classList.add('hidden');
+  testStatus.textContent = error instanceof Error ? error.message : t('errorGenerationService');
+  testStatus.classList.add('status-error');
+  console.error('Animation generation failed.', error);
+  if (error?.code === 'AUTH_REQUIRED') promptLogin();
+  else if (error?.code === 'NO_CREDITS' || error?.code === 'NO_RETRY_CREDITS') {
+    refreshCredits().catch(() => {});
+    openPackages(testStatus.textContent);
+  }
+}
+
+// Restores a job after a reload or after the phone wakes up: the saved request ID is checked on the server
+// before anything is shown, so a video that finished in the meantime appears instead of an error.
+let resuming = false;
+async function resumeGeneration() {
+  const token = sessionStorage.getItem(TOKEN_KEY);
+  if (!token || resuming || generationRunning || !resultBox.classList.contains('hidden')) return;
+  resuming = true;
+  try {
+    let status;
+    try {
+      status = await callJsonApi(`/api/generate-dance?generationToken=${encodeURIComponent(token)}`);
+    } catch (error) {
+      if (error?.network) return;
+      sessionStorage.removeItem(TOKEN_KEY);
+      return;
+    }
+    generationToken = token;
+    if (status.status === 'PENDING' && status.canPoll) {
+      generationRunning = true;
+      btnTest.disabled = true;
+      setRetryButton('retryButton', true);
+      testStatus.classList.remove('status-error');
+      testStatus.textContent = t('statusResuming');
+      startProgress();
+      acquireWakeLock();
+      try {
+        status = await waitForGeneration(token);
+      } catch (error) {
+        showGenerationError(error);
+        return;
+      } finally {
+        generationRunning = false;
+        releaseWakeLock();
+        btnTest.disabled = !selectedPhoto;
+        btnRetry.disabled = false;
+      }
+    }
+    if (status.status === 'ERROR') {
+      showGenerationError(new Error(status.error || t('errorGeneration')));
+    } else if (status.status === 'COMPLETE' && status.videoUrl) {
+      await presentResult(status).catch(showGenerationError);
+    }
+  } finally {
+    resuming = false;
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (generationRunning) {
+    acquireWakeLock();
+    if (wakePolling) wakePolling();
+  } else {
+    resumeGeneration();
+  }
+});
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) resumeGeneration();
+});
 
 async function handleCheckoutReturn() {
   const params = new URLSearchParams(window.location.search);
@@ -1002,5 +1128,8 @@ btnLogout.addEventListener('click', async () => {
 i18n.applyTranslations();
 restoreCustomization();
 renderCardPreview();
-checkAuth().finally(() => refreshCredits().catch((error) => console.error('Unable to load the credit balance.', error)));
+checkAuth().finally(() => {
+  refreshCredits().catch((error) => console.error('Unable to load the credit balance.', error));
+  resumeGeneration();
+});
 handleCheckoutReturn();
