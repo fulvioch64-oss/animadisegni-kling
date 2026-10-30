@@ -629,7 +629,10 @@ function renderPackages() {
     choose.className = 'btn-primary';
     choose.textContent = t('packageChoose');
     choose.addEventListener('click', () => buyPackage(pkg.id, choose));
-    card.append(name, price, perVideo, features, choose);
+    const equivalence = document.createElement('p');
+    equivalence.className = 'package-equivalence';
+    equivalence.textContent = t(pkg.mainCredits === 1 ? 'packageEquivalenceOne' : 'packageEquivalence', { count: pkg.mainCredits });
+    card.append(name, price, perVideo, equivalence, features, choose);
     return card;
   }));
 }
