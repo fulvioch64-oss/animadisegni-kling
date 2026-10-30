@@ -45,23 +45,25 @@ const INTROS = {
   claymation: "3D claymation character animation of a children's illustration, bringing the character into a vibrant 3D animated style. The character performs a {DANCE}. Smooth motion, clean environment, high quality render."
 };
 INTROS.faithful = INTROS.real_photo;
-const NEGATIVE_PROMPT = 'text, letters, watermark, extra limbs, page splitting, card opening, frame morphing, camera movement, blurry, low resolution, distortion, background generation';
+const NEGATIVE_PROMPT = 'text, letters, watermark, extra limbs, page splitting, card opening, frame morphing, camera movement, blurry, low resolution, distortion, background generation, turning around, 360 rotation, showing back, profile view, turning back to camera, spin, revolving, delayed motion, static opening';
 const DEFAULT_RENDER_STYLE = 'real_photo';
+// Appended to every prompt: immediate motion and strictly frontal dancing.
+const MOTION_RULES = 'The character starts dancing dynamically from frame 1, instant rhythmic action with zero delay, no static pause at start. Strictly face-forward dance only: the character must remain 100% facing front towards the viewer at all times, with side-to-side steps, arm waving, bouncing up and down, no body rotations, no spinning.';
 
 // Dance action per music style (key = motionPreset sent by the client, normalized to lowercase letters/digits).
 // To add a music genre, add one entry here.
 const DANCE_PROMPTS = {
-  reggaeton: 'bouncy reggaeton dance with a rhythmic groove: hip sways, shoulder rolls, playful steps and a happy spin',
-  disco: 'classic upbeat 1980s Italian-style disco pop dance: gentle side steps, clapping hands, bouncing on the feet, spinning once and waving to the audience',
+  reggaeton: 'bouncy reggaeton dance with a rhythmic groove: hip sways, shoulder rolls, playful side steps and a happy smile',
+  disco: 'classic upbeat 1980s Italian-style disco pop dance: gentle side steps, clapping hands, bouncing on the feet and waving to the audience',
   hiphop: 'playful hip-hop dance with bounce: rhythmic arm swings, small hops, a cheerful groove and a confident smile',
-  pop: 'catchy pop dance: energetic steps, arm waves, a happy spin and a bright smile',
-  latin: 'lively latin dance with quick footwork: side steps, hip movement, a twirl and joyful arm gestures',
+  pop: 'catchy pop dance: energetic side steps, arm waves, bouncing up and down and a bright smile',
+  latin: 'lively latin dance with quick footwork: side steps, hip movement and joyful arm gestures',
   babydance: 'cute baby dance: tiny bouncy steps, wobbling side to side, waving both hands and giggling with excitement',
-  salsa: 'lively salsa dance with quick footwork: side steps, hip movement, a twirl and joyful arm gestures',
-  ballet: 'elegant, light ballet dance: graceful arm movements, tiptoe steps, a gentle pirouette and a happy bow',
-  waltz: 'graceful waltz in three-beat time: gliding turning steps, gentle swaying, arms held in a soft waltz pose, a slow twirl and a happy bow',
-  relax: 'slow, calm dance to a gentle waltz: soft swaying from side to side, slow arm movements, a gentle turn and a peaceful smile',
-  sweet: 'tender, emotional dance: slow gentle sways, hands held to the heart, a soft twirl and a warm, loving smile'
+  salsa: 'lively salsa dance with quick footwork: side steps, hip movement and joyful arm gestures',
+  ballet: 'elegant, light ballet dance: graceful arm movements, tiptoe steps, gentle swaying and a happy bow',
+  waltz: 'graceful waltz in three-beat time: gliding side steps, gentle swaying, arms held in a soft waltz pose and a happy bow',
+  relax: 'slow, calm dance to a gentle waltz: soft swaying from side to side, slow arm movements and a peaceful smile',
+  sweet: 'tender, emotional dance: slow gentle sways, hands held to the heart and a warm, loving smile'
 };
 // Unified "style + music" ids (lowercase letters/digits after normalizeStyle) reuse the existing prompts.
 const DANCE_ALIASES = {
@@ -71,7 +73,7 @@ const DANCE_ALIASES = {
   gentlewaltz: 'waltz'
 };
 Object.entries(DANCE_ALIASES).forEach(([alias, target]) => { DANCE_PROMPTS[alias] = DANCE_PROMPTS[target]; });
-const DEFAULT_DANCE = 'joyful dance to an upbeat rhythm with cheerful family-party energy: gentle side steps, clapping hands, bouncing on the feet, spinning once, waving and smiling with excitement';
+const DEFAULT_DANCE = 'joyful dance to an upbeat rhythm with cheerful family-party energy: gentle side steps, clapping hands, bouncing on the feet, waving and smiling with excitement';
 
 function normalizeStyle(value) {
   return typeof value === 'string' ? value.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
@@ -83,7 +85,7 @@ function normalizeRenderStyle(value) {
 
 function buildPrompt(motionPreset, renderStyle, background) {
   const dance = DANCE_PROMPTS[normalizeStyle(motionPreset)] || DEFAULT_DANCE;
-  const prompt = INTROS[normalizeRenderStyle(renderStyle)].replace('{DANCE}', dance);
+  const prompt = INTROS[normalizeRenderStyle(renderStyle)].replace('{DANCE}', dance) + ' ' + MOTION_RULES;
   if (!background || background === 'original') return prompt;
   // The scene is already part of the source image: keep it instead of forbidding background content.
   return prompt
