@@ -263,15 +263,127 @@ async function removeBackgroundWithModel(imageFilePath, outputPngPath) {
   await fs.promises.writeFile(outputPngPath, Buffer.from(await blob.arrayBuffer()));
 }
 
-// Primary cut-out: Fal.ai BiRefNet (works on photos and drawings). Needs FAL_KEY; throws so the caller can use the local methods.
-const FAL_BACKGROUND_REMOVAL_MODEL = () => (process.env.FAL_BG_REMOVAL_MODEL || 'fal-ai/birefnet').trim();
+// Detached-part cleanup. Works on a downscaled mask: an erosion breaks thin links (railings, props touching the subject),
+// the main components are kept, and a constrained dilation gives the subject its original shape back.
+const CLEANUP_MASK_SIZE = 256;
+const CLEANUP_ERODE_STEPS = 3;
+const CLEANUP_KEEP_RATIO = 0.2;
+const CLEANUP_MIN_KEPT_AREA = 0.5;
+
+function morph(mask, width, height, mode) {
+  const out = new Uint8Array(mask.length);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let value = mode === 'erode' ? 1 : 0;
+      for (let dy = -1; dy <= 1 && (mode === 'erode' ? value : !value); dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          const inside = nx >= 0 && ny >= 0 && nx < width && ny < height;
+          const v = inside ? mask[ny * width + nx] : 0;
+          if (mode === 'erode' && !v) { value = 0; break; }
+          if (mode === 'dilate' && v) { value = 1; break; }
+        }
+      }
+      out[y * width + x] = value;
+    }
+  }
+  return out;
+}
+
+function largestComponents(mask, width, height) {
+  const labels = new Int32Array(mask.length);
+  const areas = [0];
+  const stack = new Int32Array(mask.length);
+  for (let start = 0; start < mask.length; start++) {
+    if (!mask[start] || labels[start]) continue;
+    const label = areas.length;
+    let area = 0;
+    let top = 0;
+    stack[top++] = start;
+    labels[start] = label;
+    while (top) {
+      const p = stack[--top];
+      area++;
+      const x = p % width;
+      const y = (p - x) / width;
+      for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const q = ny * width + nx;
+        if (mask[q] && !labels[q]) { labels[q] = label; stack[top++] = q; }
+      }
+    }
+    areas.push(area);
+  }
+  const biggest = Math.max(0, ...areas);
+  const keep = new Uint8Array(mask.length);
+  for (let p = 0; p < mask.length; p++) {
+    if (labels[p] && areas[labels[p]] >= biggest * CLEANUP_KEEP_RATIO) keep[p] = 1;
+  }
+  return keep;
+}
+
+// Keeps only the main subject of a transparent PNG; never destroys the cut-out if the result looks wrong.
+async function keepMainSubject(pngPath) {
+  const sharp = require('sharp');
+  const { data, info } = await sharp(pngPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width, height } = info;
+  const scale = Math.min(1, CLEANUP_MASK_SIZE / Math.max(width, height));
+  const smallW = Math.max(1, Math.round(width * scale));
+  const smallH = Math.max(1, Math.round(height * scale));
+  const alpha = Buffer.alloc(width * height);
+  for (let p = 0; p < alpha.length; p++) alpha[p] = data[p * 4 + 3];
+  const small = await sharp(alpha, { raw: { width, height, channels: 1 } }).resize(smallW, smallH, { kernel: 'nearest' }).toColourspace('b-w').raw().toBuffer();
+  const original = Uint8Array.from(small, (v) => (v > 127 ? 1 : 0));
+
+  let eroded = original;
+  for (let i = 0; i < CLEANUP_ERODE_STEPS; i++) eroded = morph(eroded, smallW, smallH, 'erode');
+  if (!eroded.some(Boolean)) return { applied: false, reason: 'subject too thin to analyse' };
+  let keep = largestComponents(eroded, smallW, smallH);
+  for (let i = 0; i < CLEANUP_ERODE_STEPS + 1; i++) {
+    const grown = morph(keep, smallW, smallH, 'dilate');
+    for (let p = 0; p < grown.length; p++) grown[p] = grown[p] && original[p] ? 1 : 0;
+    keep = grown;
+  }
+  const before = original.reduce((sum, v) => sum + v, 0);
+  const after = keep.reduce((sum, v) => sum + v, 0);
+  const removed = before - after;
+  if (removed <= before * 0.002) return { applied: false, reason: 'nothing to remove', removedPercent: 0 };
+  if (after < before * CLEANUP_MIN_KEPT_AREA) return { applied: false, reason: `too much would be removed (${(100 - (after / before) * 100).toFixed(0)}%)` };
+
+  const keepFull = await sharp(Buffer.from(keep.map((v) => v * 255)), { raw: { width: smallW, height: smallH, channels: 1 } })
+    .resize(width, height, { kernel: 'cubic' }).blur(1.5).toColourspace('b-w').raw().toBuffer();
+  for (let p = 0; p < alpha.length; p++) data[p * 4 + 3] = Math.round((data[p * 4 + 3] * keepFull[p]) / 255);
+  await sharp(data, { raw: { width, height, channels: 4 } }).png().toFile(`${pngPath}.clean.png`);
+  await fs.promises.rename(`${pngPath}.clean.png`, pngPath);
+  return { applied: true, removedPercent: (removed / before) * 100 };
+}
+
+// Drawings sit on a uniform light sheet; anything else is treated as a photo of a person/scene.
+async function looksLikePaperDrawing(imageFilePath) {
+  const { data, info } = await require('sharp')(imageFilePath).removeAlpha().resize(64, 64, { fit: 'fill' }).raw().toBuffer({ resolveWithObject: true });
+  const values = [];
+  for (let i = 0; i < 64; i++) for (const [x, y] of [[i, 0], [i, 63], [0, i], [63, i]]) values.push(...data.subarray((y * 64 + x) * info.channels, (y * 64 + x) * info.channels + 3));
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const spread = Math.sqrt(values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length);
+  return mean >= PAPER_MIN_BRIGHTNESS && spread <= PAPER_MAX_BORDER_SPREAD * 1.5;
+}
+
+// Primary cut-out: Fal.ai BiRefNet. Photos use the 'Portrait' model so only the person is kept; drawings use the general model.
+// Env overrides: FAL_BG_REMOVAL_MODEL (endpoint), FAL_BG_REMOVAL_PHOTO_MODEL / FAL_BG_REMOVAL_DRAWING_MODEL (BiRefNet variants).
+const FAL_BACKGROUND_REMOVAL_MODEL = () => (process.env.FAL_BG_REMOVAL_MODEL || 'fal-ai/birefnet/v2').trim();
 
 async function removeBackgroundWithFal(imageFilePath, outputPngPath) {
   if (!getFalKey()) throw new Error('FAL_KEY is not set');
   const fal = configureFal();
+  const isDrawing = await looksLikePaperDrawing(imageFilePath);
+  const variant = isDrawing
+    ? (process.env.FAL_BG_REMOVAL_DRAWING_MODEL || 'General Use (Light)').trim()
+    : (process.env.FAL_BG_REMOVAL_PHOTO_MODEL || 'Portrait').trim();
+  console.info(`[image-upload] Fal.ai cut-out input looks like a ${isDrawing ? 'drawing' : 'photo'}: BiRefNet variant "${variant}".`);
   const imageUrl = await uploadFileToFalStorage(imageFilePath, 'image/jpeg');
   const result = await withTimeout(
-    fal.subscribe(FAL_BACKGROUND_REMOVAL_MODEL(), { input: { image_url: imageUrl, output_format: 'png' }, logs: false }),
+    fal.subscribe(FAL_BACKGROUND_REMOVAL_MODEL(), { input: { image_url: imageUrl, model: variant, output_format: 'png' }, logs: false }),
     BACKGROUND_REMOVAL_TIMEOUT_MS,
     'Fal.ai background removal'
   );
@@ -337,6 +449,13 @@ async function composeThemedImage(fittedPath, backgroundPath, cutoutPath, compos
     await fs.promises.access(backgroundPath);
     stage = 'background removal';
     const method = await removeBackgroundToFile(fittedPath, cutoutPath);
+    stage = 'subject cleanup';
+    try {
+      const cleanup = await keepMainSubject(cutoutPath);
+      console.info('[image-upload] Subject cleanup:', cleanup.applied ? `removed ${cleanup.removedPercent.toFixed(1)}% detached/secondary area` : `skipped (${cleanup.reason})`);
+    } catch (cleanupError) {
+      console.warn('[image-upload] Subject cleanup failed, using the cut-out as is:', describeError(cleanupError));
+    }
     stage = 'composition';
     await compositeOnBackground(backgroundPath, cutoutPath, composedPath, ratio);
     console.info(`[image-upload] Background replaced (cut-out method: ${method}).`);
@@ -393,4 +512,4 @@ async function saveImageAsPublicUrl(dataUrl, aspectRatio, background) {
   return (await prepareImage(dataUrl, aspectRatio, background)).url;
 }
 
-module.exports = { uploadImage, prepareImage, saveImageAsPublicUrl, uploadFileToFalStorage, normalizeBackground, BACKGROUND_IDS, DEFAULT_BACKGROUND, TUNNEL_HELP };
+module.exports = { uploadImage, prepareImage, saveImageAsPublicUrl, uploadFileToFalStorage, normalizeBackground, BACKGROUND_IDS, DEFAULT_BACKGROUND, TUNNEL_HELP, keepMainSubject };
