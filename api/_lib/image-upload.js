@@ -263,8 +263,49 @@ async function removeBackgroundWithModel(imageFilePath, outputPngPath) {
   await fs.promises.writeFile(outputPngPath, Buffer.from(await blob.arrayBuffer()));
 }
 
-// Removes the drawing background locally (no Fal credits): paper keying first, the segmentation model if that is not applicable.
+// Primary cut-out: Fal.ai BiRefNet (works on photos and drawings). Needs FAL_KEY; throws so the caller can use the local methods.
+const FAL_BACKGROUND_REMOVAL_MODEL = () => (process.env.FAL_BG_REMOVAL_MODEL || 'fal-ai/birefnet').trim();
+
+async function removeBackgroundWithFal(imageFilePath, outputPngPath) {
+  if (!getFalKey()) throw new Error('FAL_KEY is not set');
+  const fal = configureFal();
+  const imageUrl = await uploadFileToFalStorage(imageFilePath, 'image/jpeg');
+  const result = await withTimeout(
+    fal.subscribe(FAL_BACKGROUND_REMOVAL_MODEL(), { input: { image_url: imageUrl, output_format: 'png' }, logs: false }),
+    BACKGROUND_REMOVAL_TIMEOUT_MS,
+    'Fal.ai background removal'
+  );
+  const cutoutUrl = result?.data?.image?.url;
+  if (!cutoutUrl) throw new Error('Fal.ai background removal returned no image');
+  const response = await withTimeout(fetch(cutoutUrl), 60_000, 'Cut-out download');
+  if (!response.ok) throw new Error(`Cut-out download failed (HTTP ${response.status})`);
+  const buffer = Buffer.from(await response.arrayBuffer());
+
+  // Reject empty or untouched results so a bad cut-out never replaces the drawing.
+  const sharp = require('sharp');
+  const { channels } = await sharp(buffer).metadata();
+  if (channels < 4) throw new Error('Fal.ai cut-out has no transparency');
+  const alpha = await sharp(buffer).ensureAlpha().extractChannel(3).raw().toBuffer();
+  let opaque = 0;
+  for (let i = 0; i < alpha.length; i++) if (alpha[i] > 127) opaque++;
+  const coverage = opaque / alpha.length;
+  console.info(`[image-upload] Fal.ai cut-out (${FAL_BACKGROUND_REMOVAL_MODEL()}): subject coverage ${(coverage * 100).toFixed(1)}%.`);
+  if (coverage < MIN_SUBJECT_COVERAGE || coverage > 0.97) {
+    throw new Error(`Fal.ai cut-out is not usable (coverage ${(coverage * 100).toFixed(1)}%)`);
+  }
+  await fs.promises.writeFile(outputPngPath, buffer);
+}
+
+// Removes the background: Fal.ai BiRefNet first (photos and drawings), then local paper keying, then the local segmentation model.
 async function removeBackgroundToFile(imageFilePath, outputPngPath) {
+  if (getFalKey()) {
+    try {
+      await removeBackgroundWithFal(imageFilePath, outputPngPath);
+      return 'fal-birefnet';
+    } catch (falError) {
+      console.warn('[image-upload] Fal.ai background removal failed, trying local methods:', describeError(falError), describeFalError(falError));
+    }
+  }
   try {
     await removePaperBackgroundToFile(imageFilePath, outputPngPath);
     return 'paper';
