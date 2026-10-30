@@ -210,10 +210,11 @@
         <div class="video-preview">
           <video id="resultVideo" controls playsinline></video>
         </div>
+        <button type="button" id="downloadVideo" class="download-video btn-download hidden" data-i18n="downloadButton">Download Video 📥</button>
+        <p id="downloadStatus" class="status" role="status" aria-live="polite"></p>
         <section id="offerCard" class="offer-card hidden" aria-labelledby="offerHeading">
           <span class="offer-sparkle" aria-hidden="true">🎁</span>
           <div class="offer-copy"><span class="offer-label" data-i18n="offerLabel">YOUR ANIMATED CARD IS READY</span><h2 id="offerHeading" data-i18n="offerHeading">Your HD card is ready</h2><p data-i18n="offerDescription">Download it without a watermark. Not happy with the result? Use a free retry on the same drawing.</p></div>
-          <a id="downloadVideo" class="download-video btn-primary hidden" href="#" data-i18n="downloadButton">⬇️ Download HD card</a>
           <button type="button" id="btnRetry" class="btn-secondary" data-i18n="retryButton">🔄 Regenerate for free (second try)</button>
           <p id="checkoutStatus" class="status" role="status" aria-live="polite"></p>
         </section>

@@ -201,6 +201,13 @@ button { touch-action: manipulation; }
 .package-badge { position: absolute; top: -13px; left: 50%; padding: 5px 12px; border-radius: 99px; background: var(--coral); color: #fff; font-size: 0.78rem; font-weight: 700; white-space: nowrap; transform: translateX(-50%); }
 @media (max-width: 560px) { .package-popular { transform: none; margin-top: 8px; } .btn-secondary.credits-buy { width: 100%; margin-left: 0; } }
 .download-video { display: block; margin-top: 9px; color: #fff; text-decoration: none; text-align: center; }
+.btn-download { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 56px; margin: 14px 0 4px; padding: 14px 20px; border: 0; border-radius: 16px; background: linear-gradient(135deg, #ff5e7e, #ff9a3c); color: #fff; font: inherit; font-size: 1.15rem; font-weight: 800; cursor: pointer; box-shadow: 0 10px 24px #ff5e7e55; touch-action: manipulation; }
+.btn-download:hover { filter: brightness(1.05); }
+.btn-download:active { transform: translateY(1px); }
+.btn-download:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+.btn-download:disabled { opacity: 0.7; cursor: progress; }
+.btn-download.hidden { display: none; }
+@media (min-width: 600px) { .btn-download { max-width: 420px; margin-inline: auto; } }
 .footer-links { display: flex; justify-content: center; gap: 18px; margin-top: 10px; }
 .footer-link { border: 0; background: none; padding: 4px 2px; color: var(--muted); font: inherit; text-decoration: underline; cursor: pointer; }
 .footer-link:hover, .footer-link:focus-visible { color: var(--ink); }

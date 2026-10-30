@@ -25,6 +25,52 @@ const progressMessage = document.getElementById('progressMessage');
 const resultBox = document.getElementById('resultBox');
 const resultVideo = document.getElementById('resultVideo');
 const downloadVideo = document.getElementById('downloadVideo');
+const downloadStatus = document.getElementById('downloadStatus');
+const DOWNLOAD_FILENAME = 'biglietto-magico.mp4';
+
+function saveBlobAs(blob, filename) {
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+}
+
+// Fetches the MP4 into a local Blob and clicks a download link, so the file lands in the Downloads folder instead of a new tab.
+downloadVideo.addEventListener('click', async () => {
+  const url = downloadVideo.dataset.url;
+  if (!url || downloadVideo.disabled) return;
+  const label = downloadVideo.textContent;
+  downloadVideo.disabled = true;
+  downloadVideo.textContent = t('downloadPreparing');
+  downloadStatus.classList.remove('status-error');
+  downloadStatus.textContent = '';
+  try {
+    const response = await fetch(url, { credentials: 'same-origin' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    if (!blob.size) throw new Error('Empty file');
+    saveBlobAs(blob.type === 'video/mp4' ? blob : new Blob([blob], { type: 'video/mp4' }), DOWNLOAD_FILENAME);
+    downloadStatus.textContent = t('downloadDone');
+  } catch (error) {
+    console.error('Direct download failed, falling back to the download link.', error);
+    // Last resort (e.g. cross-origin redirect blocked by CORS): the endpoint answers with an attachment header.
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = DOWNLOAD_FILENAME;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    downloadStatus.classList.add('status-error');
+    downloadStatus.textContent = t('downloadFallback');
+  } finally {
+    downloadVideo.disabled = false;
+    downloadVideo.textContent = label;
+  }
+});
 const motionPreset = document.getElementById('motionPreset');
 const aspectInputs = [...document.querySelectorAll('input[name="aspectRatio"]')];
 const renderStyleInputs = [...document.querySelectorAll('input[name="renderStyle"]')];
@@ -813,7 +859,7 @@ async function runFreeRetry() {
     if (data.generation_token) {
       generationToken = data.generation_token;
       sessionStorage.setItem(TOKEN_KEY, generationToken);
-      downloadVideo.href = `/api/download?id=${encodeURIComponent(generationToken)}`;
+      downloadVideo.dataset.url = `/api/download?id=${encodeURIComponent(generationToken)}`;
     }
     resultVideo.src = videoUrl;
     resultVideo.load();
@@ -919,8 +965,9 @@ async function presentResult(data) {
   playResultVideo();
   resultBox.classList.remove('hidden');
   offerCard.classList.remove('hidden');
-  downloadVideo.href = `/api/download?id=${encodeURIComponent(generationToken)}`;
+  downloadVideo.dataset.url = `/api/download?id=${encodeURIComponent(generationToken)}`;
   downloadVideo.classList.remove('hidden');
+  downloadStatus.textContent = '';
   testStatus.classList.remove('status-error');
   testStatus.textContent = t('statusVideoReady');
   if (data.credits) setCredits(data.credits);

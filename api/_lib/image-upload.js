@@ -175,16 +175,104 @@ function runFfmpeg(args, failureMessage) {
 
 const BACKGROUND_REMOVAL_TIMEOUT_MS = 90_000;
 
-// Removes the drawing background locally (no Fal credits) and writes the cut-out subject as a transparent PNG.
-async function removeBackgroundToFile(imageFilePath, outputPngPath) {
+// Cut-out tuning for drawings on white/light paper. A pixel is "paper" when it is within PAPER_DISTANCE (RGB euclidean) of the
+// border colour and connected to the image border, so white areas enclosed by the character's outline stay opaque.
+const PAPER_DISTANCE = 48;
+const PAPER_MIN_BRIGHTNESS = 150;
+const PAPER_MAX_BORDER_SPREAD = 28;
+const MIN_SUBJECT_COVERAGE = 0.005;
+const MAX_SUBJECT_COVERAGE = 0.85;
+
+function describeError(error) {
+  return {
+    name: error?.name,
+    message: error?.message,
+    cause: error?.cause?.message ?? error?.cause,
+    stack: String(error?.stack ?? '').split('\n').slice(0, 4).join(' | ')
+  };
+}
+
+// Fast, deterministic cut-out for paper drawings: flood-fills the paper colour from the border and softens the alpha edge.
+async function removePaperBackgroundToFile(imageFilePath, outputPngPath) {
+  const sharp = require('sharp');
+  const { data, info } = await sharp(imageFilePath).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width, height } = info;
+  const at = (x, y) => (y * width + x) * 3;
+
+  const border = [];
+  for (let x = 0; x < width; x++) border.push(at(x, 0), at(x, height - 1));
+  for (let y = 1; y < height - 1; y++) border.push(at(0, y), at(width - 1, y));
+  const mean = [0, 1, 2].map((c) => border.reduce((sum, i) => sum + data[i + c], 0) / border.length);
+  const spread = Math.max(...[0, 1, 2].map((c) => Math.sqrt(border.reduce((sum, i) => sum + (data[i + c] - mean[c]) ** 2, 0) / border.length)));
+  const brightness = (mean[0] + mean[1] + mean[2]) / 3;
+  if (brightness < PAPER_MIN_BRIGHTNESS || spread > PAPER_MAX_BORDER_SPREAD) {
+    throw new Error(`The image border is not a uniform light paper (brightness ${brightness.toFixed(0)}, spread ${spread.toFixed(1)})`);
+  }
+
+  const isPaper = (i) => Math.hypot(data[i] - mean[0], data[i + 1] - mean[1], data[i + 2] - mean[2]) <= PAPER_DISTANCE;
+  const background = new Uint8Array(width * height);
+  const queue = new Int32Array(width * height);
+  let head = 0;
+  let tail = 0;
+  const push = (x, y) => {
+    const p = y * width + x;
+    if (background[p] || !isPaper(p * 3)) return;
+    background[p] = 1;
+    queue[tail++] = p;
+  };
+  for (let x = 0; x < width; x++) { push(x, 0); push(x, height - 1); }
+  for (let y = 0; y < height; y++) { push(0, y); push(width - 1, y); }
+  while (head < tail) {
+    const p = queue[head++];
+    const x = p % width;
+    const y = (p - x) / width;
+    if (x > 0) push(x - 1, y);
+    if (x < width - 1) push(x + 1, y);
+    if (y > 0) push(x, y - 1);
+    if (y < height - 1) push(x, y + 1);
+  }
+
+  const alpha = Buffer.alloc(width * height);
+  let subjectPixels = 0;
+  for (let p = 0; p < alpha.length; p++) {
+    if (!background[p]) { alpha[p] = 255; subjectPixels++; }
+  }
+  const coverage = subjectPixels / alpha.length;
+  console.info(`[image-upload] Paper cut-out: paper rgb(${mean.map((v) => v.toFixed(0)).join(',')}), border spread ${spread.toFixed(1)}, subject coverage ${(coverage * 100).toFixed(1)}%.`);
+  if (coverage < MIN_SUBJECT_COVERAGE || coverage > MAX_SUBJECT_COVERAGE) {
+    throw new Error(`No clear subject found on the paper (coverage ${(coverage * 100).toFixed(1)}%)`);
+  }
+
+  // A light blur on the mask feathers the edge so the drawing doesn't show a white halo on the scene.
+  const softAlpha = await sharp(alpha, { raw: { width, height, channels: 1 } }).blur(1.2).toColourspace('b-w').raw().toBuffer();
+  await sharp(data, { raw: { width, height, channels: 3 } })
+    .joinChannel(softAlpha, { raw: { width, height, channels: 1 } })
+    .png()
+    .toFile(outputPngPath);
+}
+
+// Segmentation model for photos / non-uniform backgrounds. The input must be a PNG so the model gets lossless pixels.
+async function removeBackgroundWithModel(imageFilePath, outputPngPath) {
   const { removeBackground } = await import('@imgly/background-removal-node');
-  const buffer = await fs.promises.readFile(imageFilePath);
+  const buffer = await require('sharp')(imageFilePath).png().toBuffer();
   const blob = await withTimeout(
-    removeBackground(new Blob([buffer], { type: 'image/jpeg' }), { model: 'small', output: { format: 'image/png' } }),
+    removeBackground(new Blob([buffer], { type: 'image/png' }), { model: 'medium', output: { format: 'image/png' } }),
     BACKGROUND_REMOVAL_TIMEOUT_MS,
     'Local background removal'
   );
   await fs.promises.writeFile(outputPngPath, Buffer.from(await blob.arrayBuffer()));
+}
+
+// Removes the drawing background locally (no Fal credits): paper keying first, the segmentation model if that is not applicable.
+async function removeBackgroundToFile(imageFilePath, outputPngPath) {
+  try {
+    await removePaperBackgroundToFile(imageFilePath, outputPngPath);
+    return 'paper';
+  } catch (paperError) {
+    console.warn('[image-upload] Paper cut-out not applicable, trying the segmentation model:', describeError(paperError));
+  }
+  await removeBackgroundWithModel(imageFilePath, outputPngPath);
+  return 'model';
 }
 
 // Places the cut-out subject (already centered in the target frame) over the scene, covering the whole frame.
@@ -203,13 +291,17 @@ function compositeOnBackground(backgroundPath, subjectPngPath, outputPath, aspec
 // Tries to place the drawing subject on the themed scene. Any failure (e.g. "unable to remove background") is swallowed:
 // the caller then keeps the original image, so a background problem never stops the generation.
 async function composeThemedImage(fittedPath, backgroundPath, cutoutPath, composedPath, ratio) {
+  let stage = 'scene file';
   try {
     await fs.promises.access(backgroundPath);
-    await removeBackgroundToFile(fittedPath, cutoutPath);
+    stage = 'background removal';
+    const method = await removeBackgroundToFile(fittedPath, cutoutPath);
+    stage = 'composition';
     await compositeOnBackground(backgroundPath, cutoutPath, composedPath, ratio);
+    console.info(`[image-upload] Background replaced (cut-out method: ${method}).`);
     return true;
   } catch (error) {
-    console.warn('[image-upload] Background replacement failed, falling back to the original background:', error?.message);
+    console.error(`[image-upload] Background replacement failed at "${stage}", falling back to the original background:`, describeError(error));
     return false;
   }
 }
