@@ -3,7 +3,7 @@ const { consumeGeneration, getVideo, saveVideo, walletGet, walletConsume, wallet
 const { apiError, parseWalletId } = require('./wallet.js');
 const { renderLoopVideo, addAudioTrack } = require('./video-loop.js');
 const { generateVideoFromImage, buildPrompt } = require('./fal-video.js');
-const { saveImageAsPublicUrl, uploadFileToFalStorage } = require('./image-upload.js');
+const { prepareImage, uploadFileToFalStorage } = require('./image-upload.js');
 const { pickTrack, resolveTrackPath, trackUrl } = require('./music.js');
 const { normalizeAspectRatio } = require('./aspect-ratio.js');
 const { normalizeCard } = require('./card.js');
@@ -288,13 +288,14 @@ async function runFalGeneration(generationToken, imageUrl, motionPreset, options
   }
 }
 
-async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMotionPreset, aspectRatio: rawAspectRatio, renderStyle: rawRenderStyle, card: rawCard, music: rawMusic }, clientIp, wallet) {
+async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMotionPreset, aspectRatio: rawAspectRatio, renderStyle: rawRenderStyle, background: rawBackground, card: rawCard, music: rawMusic }, clientIp, wallet) {
   const { walletId, creditKind } = wallet;
   const aspectRatio = normalizeAspectRatio(rawAspectRatio);
   const card = normalizeCard(rawCard);
   const validatedImage = validateImageUrl(rawImageUrl);
   const imageHash = hashImage(validatedImage);
-  const imageUrl = await saveImageAsPublicUrl(validatedImage, aspectRatio);
+  // `background` is the scene really applied: it falls back to 'original' if the replacement failed.
+  const { url: imageUrl, background } = await prepareImage(validatedImage, aspectRatio, rawBackground);
   const motionPreset = validateMotionPreset(rawMotionPreset);
   const useFal = Boolean(process.env.FAL_KEY);
   const { endpoint, apiKey } = useFal ? {} : getKlingConfig();
@@ -330,8 +331,9 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
   await createOrder({
     orderId: generationToken,
     params: {
-      prompt: buildPrompt(motionPreset, rawRenderStyle),
+      prompt: buildPrompt(motionPreset, rawRenderStyle, background),
       style: rawRenderStyle ?? null,
+      background,
       image: imageUrl,
       audio: audioFile,
       motionPreset,
@@ -341,7 +343,7 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
   }).catch((error) => console.error(`[orders] Unable to create order ${generationToken}:`, error.message));
   if (useFal && process.env.VERCEL) {
     // Serverless functions are frozen once the response is sent, so the job must complete within the request.
-    const falVideoUrl = await requestFalVideo(imageUrl, motionPreset,     { aspectRatio, renderStyle: rawRenderStyle });
+    const falVideoUrl = await requestFalVideo(imageUrl, motionPreset, { aspectRatio, renderStyle: rawRenderStyle, background });
     await chargeCredit(generationToken, wallet);
     await saveVideo(generationToken, { sourceVideoUrl: falVideoUrl, generationStatus: 'RENDERING' });
     const videoUrl = await renderAndSaveVideo(generationToken, falVideoUrl);
@@ -352,7 +354,7 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
     // (tunnels/proxies/browsers drop long-lived requests, which surfaced as "Couldn't reach /api/generate-dance").
     activeGenerations.add(generationToken);
     wallet.deferRelease = true;
-    runFalGeneration(generationToken, imageUrl, motionPreset, { aspectRatio, renderStyle: rawRenderStyle }, wallet)
+    runFalGeneration(generationToken, imageUrl, motionPreset, { aspectRatio, renderStyle: rawRenderStyle, background }, wallet)
       .finally(() => activeGenerations.delete(generationToken));
     return { generationToken, taskId: null, status: 'PENDING', canPoll: true };
   }

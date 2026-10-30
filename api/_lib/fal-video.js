@@ -81,13 +81,21 @@ function normalizeRenderStyle(value) {
   return typeof value === 'string' && Object.hasOwn(INTROS, value) ? value : DEFAULT_RENDER_STYLE;
 }
 
-function buildPrompt(motionPreset, renderStyle) {
+function buildPrompt(motionPreset, renderStyle, background) {
   const dance = DANCE_PROMPTS[normalizeStyle(motionPreset)] || DEFAULT_DANCE;
-  return INTROS[normalizeRenderStyle(renderStyle)].replace('{DANCE}', dance);
+  const prompt = INTROS[normalizeRenderStyle(renderStyle)].replace('{DANCE}', dance);
+  if (!background || background === 'original') return prompt;
+  // The scene is already part of the source image: keep it instead of forbidding background content.
+  return prompt
+    .replace(' on a clean paper background', ' on an illustrated scene')
+    .replace('no background generation, no extra scene elements, ', '')
+    + ' Keep the illustrated scene behind the character exactly as in the image.';
 }
 
-function buildNegativePrompt() {
-  return NEGATIVE_PROMPT;
+function buildNegativePrompt(background) {
+  return background && background !== 'original'
+    ? NEGATIVE_PROMPT.replace(', background generation', ', background change')
+    : NEGATIVE_PROMPT;
 }
 
 function resolveModel() {
@@ -125,7 +133,7 @@ async function assertImageReachable(imageUrl) {
   }
 }
 
-async function generateVideoFromImage(imageUrl, motionPreset, { referenceMotionVideoUrl = null, aspectRatio = DEFAULT_ASPECT_RATIO, renderStyle = DEFAULT_RENDER_STYLE } = {}) {
+async function generateVideoFromImage(imageUrl, motionPreset, { referenceMotionVideoUrl = null, aspectRatio = DEFAULT_ASPECT_RATIO, renderStyle = DEFAULT_RENDER_STYLE, background = 'original' } = {}) {
   try {
     const falKey = getFalKey();
     console.log('FAL_KEY caricata:', falKey ? 'Presente' : 'Mancante');
@@ -142,8 +150,8 @@ async function generateVideoFromImage(imageUrl, motionPreset, { referenceMotionV
     const model = resolveModel();
     const input = {
       [model.imageField]: imageUrl,
-      prompt: buildPrompt(motionPreset, renderStyle),
-      negative_prompt: buildNegativePrompt(),
+      prompt: buildPrompt(motionPreset, renderStyle, background),
+      negative_prompt: buildNegativePrompt(background),
       duration: '5',
       ...model.extraInput
     };

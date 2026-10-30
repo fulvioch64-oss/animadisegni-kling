@@ -3,11 +3,24 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
-const { DEFAULT_ASPECT_RATIO, normalizeAspectRatio, fitFilter } = require('./aspect-ratio.js');
+const { DEFAULT_ASPECT_RATIO, ASPECT_RATIOS, normalizeAspectRatio, fitFilter } = require('./aspect-ratio.js');
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const LOCAL_UPLOAD_TTL_MS = 24 * 60 * 60 * 1000;
 const PUBLIC_UPLOAD_DIRECTORY = path.resolve(__dirname, '..', '..', 'public', 'uploads');
+const BACKGROUND_DIRECTORY = path.resolve(__dirname, '..', '..', 'public', 'sfondi');
+const DEFAULT_BACKGROUND = 'original';
+// Illustrated scenes in public/sfondi/ (key = `background` value sent by the client). To add a scene, add a PNG and one entry.
+const BACKGROUND_FILES = {
+  playroom: 'stanza-giochi.png',
+  enchanted_stage: 'palco-incantato.png',
+  neon_stage: 'palco-neon.png'
+};
+const BACKGROUND_IDS = [DEFAULT_BACKGROUND, ...Object.keys(BACKGROUND_FILES)];
+
+function normalizeBackground(value) {
+  return typeof value === 'string' && BACKGROUND_IDS.includes(value) ? value : DEFAULT_BACKGROUND;
+}
 const MIME_EXTENSIONS = new Map([
   ['image/jpeg', 'jpg'],
   ['image/png', 'png'],
@@ -141,12 +154,73 @@ async function uploadFileToFalStorage(filePath, contentType = 'image/jpeg') {
   return withTimeout(fal.storage.upload(new Blob([buffer], { type: contentType })), 60_000, 'Upload su Fal storage');
 }
 
-// Returns a URL the video provider can download: Fal storage when FAL_KEY is set, otherwise public/uploads served through
-// PUBLIC_BASE_URL. The user's image is sent as-is (only fitted to the target aspect ratio); no background removal.
-// Illustrated scenes are described in the prompt (see fal-video.js).
-async function saveImageAsPublicUrl(dataUrl, aspectRatio = DEFAULT_ASPECT_RATIO) {
+function runFfmpeg(args, failureMessage) {
+  return new Promise((resolve, reject) => {
+    const ffmpegPath = require('ffmpeg-static');
+    if (!ffmpegPath) {
+      reject(new Error('FFmpeg binary is unavailable for this platform.'));
+      return;
+    }
+    const child = spawn(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-y', ...args], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk) => { stderr = (stderr + chunk).slice(-3000); });
+    child.on('error', (error) => reject(new Error(`Unable to start FFmpeg: ${error.message}`)));
+    child.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`${failureMessage}: ${stderr.trim() || `FFmpeg exit code ${code}`}`));
+    });
+  });
+}
+
+const BACKGROUND_REMOVAL_TIMEOUT_MS = 90_000;
+
+// Removes the drawing background locally (no Fal credits) and writes the cut-out subject as a transparent PNG.
+async function removeBackgroundToFile(imageFilePath, outputPngPath) {
+  const { removeBackground } = await import('@imgly/background-removal-node');
+  const buffer = await fs.promises.readFile(imageFilePath);
+  const blob = await withTimeout(
+    removeBackground(new Blob([buffer], { type: 'image/jpeg' }), { model: 'small', output: { format: 'image/png' } }),
+    BACKGROUND_REMOVAL_TIMEOUT_MS,
+    'Local background removal'
+  );
+  await fs.promises.writeFile(outputPngPath, Buffer.from(await blob.arrayBuffer()));
+}
+
+// Places the cut-out subject (already centered in the target frame) over the scene, covering the whole frame.
+function compositeOnBackground(backgroundPath, subjectPngPath, outputPath, aspectRatio) {
+  const { width, height } = ASPECT_RATIOS[normalizeAspectRatio(aspectRatio)];
+  const subjectWidth = Math.round(width * 0.9);
+  const subjectHeight = Math.round(height * 0.9);
+  const filter = [
+    `[0:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1[bg]`,
+    `[1:v]format=rgba,scale=${subjectWidth}:${subjectHeight}:force_original_aspect_ratio=decrease[fg]`,
+    '[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p'
+  ].join(';');
+  return runFfmpeg(['-i', backgroundPath, '-i', subjectPngPath, '-filter_complex', filter, '-frames:v', '1', '-q:v', '2', outputPath], 'Unable to compose the subject on the background');
+}
+
+// Tries to place the drawing subject on the themed scene. Any failure (e.g. "unable to remove background") is swallowed:
+// the caller then keeps the original image, so a background problem never stops the generation.
+async function composeThemedImage(fittedPath, backgroundPath, cutoutPath, composedPath, ratio) {
+  try {
+    await fs.promises.access(backgroundPath);
+    await removeBackgroundToFile(fittedPath, cutoutPath);
+    await compositeOnBackground(backgroundPath, cutoutPath, composedPath, ratio);
+    return true;
+  } catch (error) {
+    console.warn('[image-upload] Background replacement failed, falling back to the original background:', error?.message);
+    return false;
+  }
+}
+
+// Returns the URL the video provider can download (Fal storage when FAL_KEY is set, otherwise public/uploads served through
+// PUBLIC_BASE_URL) and the background that was really applied: 'original' keeps the paper sheet as drawn, a themed scene
+// replaces it, and any failure of the replacement silently degrades to 'original'.
+async function prepareImage(dataUrl, aspectRatio = DEFAULT_ASPECT_RATIO, requestedBackground = DEFAULT_BACKGROUND) {
   const { image, extension } = parseImageDataUrl(dataUrl);
   const ratio = normalizeAspectRatio(aspectRatio);
+  const background = normalizeBackground(requestedBackground);
   const useFalStorage = Boolean(getFalKey());
   const baseUrl = useFalStorage ? null : resolvePublicBaseUrl();
   const outputDirectory = useFalStorage ? os.tmpdir() : PUBLIC_UPLOAD_DIRECTORY;
@@ -154,23 +228,36 @@ async function saveImageAsPublicUrl(dataUrl, aspectRatio = DEFAULT_ASPECT_RATIO)
   const id = crypto.randomUUID();
   const rawPath = path.join(outputDirectory, `${id}-source.${extension}`);
   const fittedPath = path.join(outputDirectory, `${id}-fitted.jpg`);
+  const cutoutPath = path.join(outputDirectory, `${id}-cutout.png`);
+  const composedPath = path.join(outputDirectory, `${id}-composed.jpg`);
   await fs.promises.writeFile(rawPath, image, { flag: 'wx' });
   try {
     await fitImageToAspectRatio(rawPath, fittedPath, ratio);
+    let uploadPath = fittedPath;
+    let appliedBackground = DEFAULT_BACKGROUND;
+    if (background !== DEFAULT_BACKGROUND
+      && await composeThemedImage(fittedPath, path.join(BACKGROUND_DIRECTORY, BACKGROUND_FILES[background]), cutoutPath, composedPath, ratio)) {
+      uploadPath = composedPath;
+      appliedBackground = background;
+    }
     if (useFalStorage) {
       try {
-        return await uploadFileToFalStorage(fittedPath, 'image/jpeg');
+        return { url: await uploadFileToFalStorage(uploadPath, 'image/jpeg'), background: appliedBackground };
       } catch (error) {
         console.error('[image-upload] Fal storage upload failed:', error?.status, error?.message, JSON.stringify(error?.body ?? ''));
         throw inputError(`Upload dell’immagine su Fal storage non riuscito: ${describeFalError(error)}.`, 502);
       }
     }
     const localName = `${id}.jpg`;
-    await fs.promises.copyFile(fittedPath, path.join(outputDirectory, localName));
-    return `${baseUrl}/uploads/${localName}`;
+    await fs.promises.copyFile(uploadPath, path.join(outputDirectory, localName));
+    return { url: `${baseUrl}/uploads/${localName}`, background: appliedBackground };
   } finally {
-    await Promise.all([rawPath, fittedPath].map((file) => fs.promises.rm(file, { force: true })));
+    await Promise.all([rawPath, fittedPath, cutoutPath, composedPath].map((file) => fs.promises.rm(file, { force: true })));
   }
 }
 
-module.exports = { uploadImage, saveImageAsPublicUrl, uploadFileToFalStorage, TUNNEL_HELP };
+async function saveImageAsPublicUrl(dataUrl, aspectRatio, background) {
+  return (await prepareImage(dataUrl, aspectRatio, background)).url;
+}
+
+module.exports = { uploadImage, prepareImage, saveImageAsPublicUrl, uploadFileToFalStorage, normalizeBackground, BACKGROUND_IDS, DEFAULT_BACKGROUND, TUNNEL_HELP };

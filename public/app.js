@@ -29,6 +29,8 @@ const motionPreset = document.getElementById('motionPreset');
 const aspectInputs = [...document.querySelectorAll('input[name="aspectRatio"]')];
 const renderStyleInputs = [...document.querySelectorAll('input[name="renderStyle"]')];
 const selectedRenderStyle = () => renderStyleInputs.find((input) => input.checked)?.value || 'real_photo';
+const backgroundInputs = [...document.querySelectorAll('input[name="background"]')];
+const selectedBackground = () => backgroundInputs.find((input) => input.checked)?.value || 'original';
 const selectedAspectRatio = () => aspectInputs.find((input) => input.checked)?.value || '9:16';
 const languageSelect = document.getElementById('languageSelect');
 const cardMessage = document.getElementById('cardMessage');
@@ -338,6 +340,7 @@ function saveCustomization() {
       motionPreset: motionPreset.value,
       aspectRatio: selectedAspectRatio(),
       renderStyle: selectedRenderStyle(),
+      background: selectedBackground(),
       card: selectedCard()
     }));
   } catch (error) {
@@ -349,6 +352,7 @@ function saveCustomization() {
 motionPreset.addEventListener('change', saveCustomization);
 aspectInputs.forEach((input) => input.addEventListener('change', saveCustomization));
 renderStyleInputs.forEach((input) => input.addEventListener('change', saveCustomization));
+backgroundInputs.forEach((input) => input.addEventListener('change', saveCustomization));
 cardMessage.addEventListener('input', saveCustomization);
 [...cardFontInputs, ...cardTemplateInputs].forEach((input) => input.addEventListener('change', saveCustomization));
 languageSelect.addEventListener('change', async () => {
@@ -495,6 +499,8 @@ function restoreCustomization() {
     if (savedAspect) savedAspect.checked = true;
     const savedStyle = renderStyleInputs.find((input) => input.value === customization.renderStyle);
     if (savedStyle) savedStyle.checked = true;
+    const savedBackground = backgroundInputs.find((input) => input.value === customization.background);
+    if (savedBackground) savedBackground.checked = true;
     const savedCard = customization.card;
     if (savedCard && typeof savedCard === 'object') {
       if (typeof savedCard.message === 'string') cardMessage.value = savedCard.message.slice(0, 60);
@@ -871,6 +877,7 @@ async function startGeneration(isRetry) {
       motionPreset: motionPreset.value,
       aspectRatio: selectedAspectRatio(),
       renderStyle: selectedRenderStyle(),
+      background: selectedBackground(),
       card: selectedCard(),
       walletId: getWalletId(),
       ...(retryOfToken ? { retryOfToken } : {})
