@@ -1,10 +1,10 @@
 // Credit packages. To add one, add an entry here and its LEMONSQUEEZY_VARIANT_ID_<ID> env var.
 // mainCredits: new HD videos from scratch. retryCredits: free regenerations of the same drawing.
 const PACKAGES = {
-  starter: { id: 'starter', priceCents: 349, mainCredits: 1, retryCredits: 1 },
-  family: { id: 'family', priceCents: 999, mainCredits: 4, retryCredits: 2, popular: true },
-  party: { id: 'party', priceCents: 1999, mainCredits: 10, retryCredits: 5 },
-  school: { id: 'school', priceCents: 3999, mainCredits: 20, retryCredits: 8 }
+  starter: { id: 'starter', priceCents: 199, mainCredits: 1, retryCredits: 1 },
+  family: { id: 'family', priceCents: 599, mainCredits: 4, retryCredits: 2, popular: true },
+  party: { id: 'party', priceCents: 1299, mainCredits: 10, retryCredits: 5 },
+  school: { id: 'school', priceCents: 1999, mainCredits: 20, retryCredits: 8 }
 };
 const CURRENCY = 'EUR';
 

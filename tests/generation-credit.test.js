@@ -17,7 +17,10 @@ const stub = (file, exports) => {
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
 };
 stub('fal-video.js', { generateVideoFromImage: (...args) => falBehaviour(...args), buildPrompt: () => 'prompt' });
-stub('image-upload.js', { saveImageAsPublicUrl: async () => 'https://img.example/x.png' });
+stub('image-upload.js', {
+  saveImageAsPublicUrl: async () => 'https://img.example/x.png',
+  prepareImage: async (_dataUrl, _aspectRatio, background) => ({ url: 'https://img.example/x.png', background: background || 'original' })
+});
 stub('video-loop.js', { renderLoopVideo: async () => '/tmp/x.mp4', addAudioTrack: async () => '/tmp/x-audio.mp4', OUTPUT_DIRECTORY: '/tmp' });
 
 const store = require('../api/_lib/store.js');

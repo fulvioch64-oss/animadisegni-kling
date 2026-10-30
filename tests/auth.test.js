@@ -170,7 +170,7 @@ test('Stripe webhook: verifies signature, credits once, rejects wrong amount', a
   const hook = require('../api/stripe-webhook.js');
   assert.equal(hook.config.api.bodyParser, false);
   const wallet = crypto.randomUUID();
-  const sessionObj = (over = {}) => ({ id: `cs_${crypto.randomUUID()}`, payment_status: 'paid', currency: 'eur', amount_total: 999, metadata: { wallet_id: wallet, package_id: 'family' }, ...over });
+  const sessionObj = (over = {}) => ({ id: `cs_${crypto.randomUUID()}`, payment_status: 'paid', currency: 'eur', amount_total: 599, metadata: { wallet_id: wallet, package_id: 'family' }, ...over });
   const deliver = async (session, { secret = process.env.STRIPE_WEBHOOK_SECRET, ts = Math.floor(Date.now() / 1000) } = {}) => {
     const raw = Buffer.from(JSON.stringify({ type: 'checkout.session.completed', data: { object: session } }));
     const sig = crypto.createHmac('sha256', secret).update(`${ts}.`).update(raw).digest('hex');
