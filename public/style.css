@@ -113,6 +113,12 @@ button { touch-action: manipulation; }
 .form-group .aspect-option input { width: auto; padding: 0; position: absolute; opacity: 0; pointer-events: none; }
 .aspect-option:has(input:checked) { border-color: var(--blue); box-shadow: 0 0 0 3px #69c9e81c; }
 .aspect-option:has(input:focus-visible) { outline: 2px solid var(--blue); outline-offset: 2px; }
+.bg-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+.bg-group legend, .bg-group .field-hint { grid-column: 1 / -1; }
+.form-group .bg-option { flex: none; flex-direction: column; justify-content: flex-start; text-align: center; font-size: 0.88rem; padding: 8px; gap: 6px; }
+.bg-thumb { width: 100%; max-width: 96px; aspect-ratio: 1; height: auto; object-fit: cover; border: 3px solid var(--line); border-radius: 12px; background: #fff; }
+.bg-thumb-original { display: grid; place-items: center; font-size: 2rem; background: repeating-linear-gradient(45deg, #fff, #fff 6px, #f4efe6 6px, #f4efe6 12px); }
+@media (max-width: 480px) { .bg-group { grid-template-columns: repeat(2, 1fr); } }
 .aspect-box { flex: none; border: 2px solid var(--ink); border-radius: 4px; background: #fff; }
 .aspect-vertical { width: 18px; height: 32px; }
 .aspect-square { width: 26px; height: 26px; }
@@ -284,12 +290,10 @@ button:focus-visible, a:focus-visible { outline: 3px solid #69c9e880; outline-of
 body.cropper-open { overflow: hidden; }
 
 .background-group { display: flex; flex-wrap: wrap; gap: 10px; }
-.bg-option { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 92px; cursor: pointer; text-align: center; font-size: 0.85rem; }
+.bg-option { cursor: pointer; }
 .bg-option input { position: absolute; opacity: 0; pointer-events: none; }
-.bg-thumb { width: 92px; height: 92px; object-fit: cover; border: 3px solid var(--line); border-radius: 12px; background: #fff; }
-.bg-thumb-none { display: block; }
-.bg-option input:checked + .bg-thumb { border-color: var(--coral); box-shadow: 0 0 0 2px #ff5e7e40; }
-.bg-option input:focus-visible + .bg-thumb { outline: 2px solid var(--blue); outline-offset: 2px; }
+.bg-option:has(input:checked) .bg-thumb { border-color: var(--coral); box-shadow: 0 0 0 2px #ff5e7e40; }
+.bg-option:has(input:focus-visible) { outline: 2px solid var(--blue); outline-offset: 2px; }
 
 .demo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; max-width: 760px; margin: 22px auto 0; }
 .demo-grid .demo-figure { width: 100%; margin: 0; }
