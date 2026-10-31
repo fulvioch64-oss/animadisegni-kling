@@ -88,65 +88,80 @@ async function renderPingPong(sourcePath, outputPath, token, aspectRatio, card, 
       return;
     }
 
-    // Each ping-pong cycle (forward + reverse) starts and ends on the same frame, so repeating it never shows a cut.
-    const cycleLabels = Array.from({ length: PING_PONG_CYCLES }, (_, index) => `[cycle_${index}]`);
+    // One ping-pong cycle (forward + reverse) starts and ends on the same frame, so repeating it never shows a cut.
+    // Only this single cycle is encoded; the repetitions are made without re-encoding (see below) to keep memory low.
+    // The reverse runs at the source resolution (before the fit) so far fewer bytes are buffered.
+    const fit = cardAssets ? cardAssets.fit : fitFilter(aspectRatio);
     const filterParts = [
-      `[0:v]trim=duration=${SOURCE_DURATION_SECONDS},setpts=PTS-STARTPTS,${cardAssets ? cardAssets.fit : fitFilter(aspectRatio)},split=2[forward][reverse_input]`,
+      `[0:v]trim=duration=${SOURCE_DURATION_SECONDS},setpts=PTS-STARTPTS,split=2[forward][reverse_input]`,
       '[reverse_input]reverse[reversed]',
-      `[forward][reversed]concat=n=2:v=1:a=0,setpts=PTS-STARTPTS,split=${PING_PONG_CYCLES}${cycleLabels.join('')}`,
-      `${cycleLabels.join('')}concat=n=${PING_PONG_CYCLES}:v=1:a=0,trim=duration=${OUTPUT_DURATION_SECONDS},setpts=PTS-STARTPTS[${cardAssets ? 'looped' : 'loop'}]`
+      `[forward][reversed]concat=n=2:v=1:a=0,setpts=PTS-STARTPTS,${fit}[${cardAssets ? 'looped' : 'loop'}]`
     ];
-          if (cardAssets) {
-            // The frame PNG already contains the message: only the `overlay` filter is needed.
-            filterParts.push('[looped][1:v]overlay=0:0:shortest=1[loop]');
-          }
-          const filter = filterParts.join(';');
-          const args = [
-            '-hide_banner', '-loglevel', 'error', '-y',
-            '-stream_loop', '-1',
-            '-i', sourcePath,
-            ...(cardAssets ? ['-loop', '1', '-i', cardAssets.frameFile] : []),
+    if (cardAssets) {
+      // The frame PNG already contains the message: only the `overlay` filter is needed.
+      filterParts.push('[looped][1:v]overlay=0:0:shortest=1[loop]');
+    }
+    const filter = filterParts.join(';');
+    const cyclePath = `${outputPath}.cycle.mp4`;
+    const args = [
+      '-hide_banner', '-loglevel', 'error', '-y',
+      '-i', sourcePath,
+      ...(cardAssets ? ['-loop', '1', '-i', cardAssets.frameFile] : []),
       '-filter_complex', filter,
       '-map', '[loop]',
       '-an',
-      '-t', String(OUTPUT_DURATION_SECONDS),
+      '-t', String(SOURCE_DURATION_SECONDS * 2),
       '-c:v', 'libx264',
       '-preset', 'veryfast',
       '-crf', '23',
       '-pix_fmt', 'yuv420p',
       '-movflags', '+faststart',
       '-f', 'mp4',
+      cyclePath
+    ];
+    const repeatArgs = [
+      '-hide_banner', '-loglevel', 'error', '-y',
+      '-stream_loop', String(PING_PONG_CYCLES - 1),
+      '-i', cyclePath,
+      '-c', 'copy',
+      '-t', String(OUTPUT_DURATION_SECONDS),
+      '-movflags', '+faststart',
+      '-f', 'mp4',
       outputPath
     ];
 
-    console.info(`[video:${token}] Rendering ${OUTPUT_DURATION_SECONDS}-second ping-pong loop with FFmpeg.`);
-    const process = spawn(ffmpegPath, args, {
-      cwd: workDirectory,
-      windowsHide: true,
-      stdio: ['ignore', 'ignore', 'pipe']
+    const runFfmpeg = (ffmpegArgs, label) => new Promise((done, fail) => {
+      const process = spawn(ffmpegPath, ffmpegArgs, { cwd: workDirectory, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+      let stderr = '';
+      const timeout = setTimeout(() => process.kill(), 5 * 60 * 1000);
+      process.stderr.setEncoding('utf8');
+      process.stderr.on('data', (chunk) => {
+        stderr = (stderr + chunk).slice(-6000);
+      });
+      process.on('error', (error) => {
+        clearTimeout(timeout);
+        fail(new Error(`Unable to start FFmpeg: ${error.message}`));
+      });
+      process.on('close', (code, signal) => {
+        clearTimeout(timeout);
+        if (code === 0) done();
+        else fail(new Error(`FFmpeg ${label} failed with exit code ${code}${signal ? ` (${signal})` : ''}: ${stderr.trim() || 'no details available'}`));
+      });
     });
-    let stderr = '';
-    const timeout = setTimeout(() => process.kill(), 5 * 60 * 1000);
-    process.stderr.setEncoding('utf8');
-    process.stderr.on('data', (chunk) => {
-      stderr = (stderr + chunk).slice(-6000);
-    });
-    process.on('error', (error) => {
-      clearTimeout(timeout);
-      reject(new Error(`Unable to start FFmpeg: ${error.message}`));
-    });
-    process.on('close', (code) => {
-      clearTimeout(timeout);
-      if (code === 0) {
+
+    console.info(`[video:${token}] Rendering the ping-pong cycle with FFmpeg.`);
+    runFfmpeg(args, 'cycle render')
+      .then(() => {
+        console.info(`[video:${token}] Repeating the cycle to ${OUTPUT_DURATION_SECONDS} seconds.`);
+        return runFfmpeg(repeatArgs, 'loop repeat');
+      })
+      .then(() => {
         console.info(`[video:${token}] FFmpeg render complete.`);
         resolve();
-      } else {
-        reject(new Error(`FFmpeg failed with exit code ${code}: ${stderr.trim() || 'no details available'}`));
-      }
-    });
+      })
+      .catch(reject);
   });
 }
-
 async function renderVideoOnce(token, videoUrl, aspectRatio, card) {
   const finalPath = path.join(OUTPUT_DIRECTORY, `${token}.mp4`);
   const temporaryDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'little-moves-'));
