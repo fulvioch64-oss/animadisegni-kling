@@ -424,7 +424,7 @@ async function removeBackgroundToFile(imageFilePath, outputPngPath) {
   } catch (paperError) {
     console.warn('[image-upload] Paper cut-out not applicable, trying the segmentation model:', describeError(paperError));
   }
-  // The local segmentation model needs far more memory than a small Render instance has: the process gets killed and restarted.
+  // The local segmentation model needs far more memory than a serverless function has.
   // It is opt-in (LOCAL_BG_REMOVAL=true); otherwise the caller keeps the original background.
   if (process.env.LOCAL_BG_REMOVAL !== 'true') throw new Error('Local segmentation model disabled (set LOCAL_BG_REMOVAL=true to enable it)');
   await removeBackgroundWithModel(imageFilePath, outputPngPath);

@@ -1,0 +1,6 @@
+{
+  "functions": {
+    "api/generate-dance.js": { "maxDuration": 300 },
+    "api/retry.js": { "maxDuration": 300 }
+  }
+}

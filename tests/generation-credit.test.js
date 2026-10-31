@@ -85,22 +85,3 @@ test('no credits: rejected before calling the provider', async () => {
   await assert.rejects(generate(walletId), { code: 'NO_CREDITS' });
   assert.equal(called, false);
 });
-
-test('long-running server: the poll answers at once and the render finishes in the background', async () => {
-  delete process.env.VERCEL;
-  try {
-    const walletId = await fundedWallet(1);
-    const { generationToken } = await generate(walletId);
-    const first = await getDanceStatus(generationToken);
-    assert.equal(first.status, 'PENDING');
-    let last = first;
-    for (let i = 0; i < 50 && last.status === 'PENDING'; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      last = await getDanceStatus(generationToken);
-    }
-    assert.equal(last.status, 'COMPLETE');
-    assert.deepEqual(await store.walletGet(walletId), { mainCredits: 0, retryCredits: 0 });
-  } finally {
-    process.env.VERCEL = '1';
-  }
-});

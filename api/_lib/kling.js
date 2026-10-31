@@ -391,37 +391,13 @@ async function advanceQueuedGeneration(generationToken, savedVideo) {
   console.info(`[generation:${generationToken}] Fal.ai video ready: ${check.url}`);
   try {
     await saveVideo(generationToken, { sourceVideoUrl: check.url, generationStatus: 'RENDERING', renderStartedAt: Date.now() });
-    // Serverless functions are frozen once the response is sent, so there the render must finish inside this request.
-    if (process.env.VERCEL) {
-      await chargeCredit(generationToken, wallet);
-      const videoUrl = await renderAndSaveVideo(generationToken, check.url);
-      return { generationToken, taskId: null, status: 'COMPLETE', videoUrl, canPoll: false };
-    }
-    startBackgroundFinish(generationToken, check.url, wallet, false);
-    return pending;
+    // Serverless functions are frozen once the response is sent, so the render must finish inside this request.
+    await chargeCredit(generationToken, wallet);
+    const videoUrl = await renderAndSaveVideo(generationToken, check.url);
+    return { generationToken, taskId: null, status: 'COMPLETE', videoUrl, canPoll: false };
   } catch (error) {
     return fail(error);
   }
-}
-
-// On a long-running server (Render, local) the charge + download + FFmpeg render run outside the polling request,
-// which answers at once; the next polls see the finished video or the saved error.
-const finishingJobs = new Set();
-
-function startBackgroundFinish(generationToken, sourceUrl, wallet, alreadyCharged) {
-  if (finishingJobs.has(generationToken)) return;
-  finishingJobs.add(generationToken);
-  (async () => {
-    try {
-      console.info(`[generation:${generationToken}] Background finish started.`);
-      if (!alreadyCharged) await chargeCredit(generationToken, wallet);
-      await renderAndSaveVideo(generationToken, sourceUrl);
-    } catch (error) {
-      await failGeneration(generationToken, error, wallet);
-    } finally {
-      finishingJobs.delete(generationToken);
-    }
-  })();
 }
 
 async function getDanceStatus(generationToken) {
@@ -458,17 +434,10 @@ async function getDanceStatusInternal(generationToken) {
   const queuedJob = await advanceQueuedGeneration(generationToken, savedVideo);
   if (queuedJob) return queuedJob;
   if (savedVideo.sourceVideoUrl) {
-    if (finishingJobs.has(generationToken)) return { generationToken, taskId: savedVideo.taskId, status: 'PENDING', canPoll: true };
     if (savedVideo.generationStatus === 'RENDERING' && process.env.VERCEL && Date.now() - (savedVideo.renderStartedAt || 0) < RENDER_CLAIM_MS) {
       return { generationToken, taskId: savedVideo.taskId, status: 'PENDING', canPoll: true };
     }
     await saveVideo(generationToken, { renderStartedAt: Date.now() });
-    if (!process.env.VERCEL && savedVideo.walletId) {
-      // Resumes after a restart: the credit may already have been charged before the render was interrupted.
-      console.info(`[generation:${generationToken}] Resuming the render in the background.`);
-      startBackgroundFinish(generationToken, savedVideo.sourceVideoUrl, { walletId: savedVideo.walletId, creditKind: savedVideo.creditKind, charged: savedVideo.creditCharged === true }, savedVideo.creditCharged === true);
-      return { generationToken, taskId: savedVideo.taskId, status: 'PENDING', canPoll: true };
-    }
     console.info(`[generation:${generationToken}] Resuming loop render from saved Kling output.`);
     const videoUrl = await renderAndSaveVideo(generationToken, savedVideo.sourceVideoUrl);
     return {
