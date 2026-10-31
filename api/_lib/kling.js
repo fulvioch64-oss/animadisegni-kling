@@ -255,8 +255,6 @@ function hashImage(dataUrl) {
   return crypto.createHash('sha256').update(dataUrl).digest('hex');
 }
 
-const activeGenerations = new Set();
-
 async function failGeneration(generationToken, error, { walletId, creditKind, charged }) {
   console.error(`[generation:${generationToken}] Background generation failed:`, error?.message, error?.cause ?? '');
   await saveVideo(generationToken, {
@@ -265,17 +263,6 @@ async function failGeneration(generationToken, error, { walletId, creditKind, ch
   }).catch((saveError) => console.error('[generation] Unable to save error state:', saveError));
   // Only a credit that was actually charged is returned; before the charge nothing was spent.
   if (charged) await walletRefund(walletId, creditKind).catch((refundError) => console.error('[credits] Refund failed:', refundError));
-}
-
-async function runFalGeneration(generationToken, imageUrl, motionPreset, options, wallet) {
-  try {
-    const falVideoUrl = await requestFalVideo(imageUrl, motionPreset, options);
-    await chargeCredit(generationToken, wallet);
-    await saveVideo(generationToken, { sourceVideoUrl: falVideoUrl, generationStatus: 'RENDERING' });
-    await renderAndSaveVideo(generationToken, falVideoUrl);
-  } catch (error) {
-    await failGeneration(generationToken, error, wallet);
-  }
 }
 
 async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMotionPreset, aspectRatio: rawAspectRatio, renderStyle: rawRenderStyle, background: rawBackground, card: rawCard, music: rawMusic, style: rawStyle }, clientIp, wallet) {
@@ -332,18 +319,10 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
       card
     }
   }).catch((error) => console.error(`[orders] Unable to create order ${generationToken}:`, error.message));
-  if (useFal && process.env.VERCEL) {
-    // Serverless functions are frozen once the response is sent: the job is queued on Fal.ai and finished by the status polls.
+  if (useFal) {
+    // The job is queued on Fal.ai and finished by the status polls: no request stays open and a restart does not lose it.
     const queued = await submitVideoFromImage(imageUrl, motionPreset, { aspectRatio, renderStyle: rawRenderStyle, background, theme: christmas ? 'christmas' : 'classic' });
     await saveVideo(generationToken, { falRequestId: queued.requestId, falModelId: queued.modelId, falSubmittedAt: Date.now(), generationStatus: 'GENERATING' });
-    return { generationToken, taskId: null, status: 'PENDING', canPoll: true };
-  }
-  if (useFal) {
-    // Fal generation takes minutes: run it in the background and let the client poll, so no HTTP request stays open
-    // (tunnels/proxies/browsers drop long-lived requests, which surfaced as "Couldn't reach /api/generate-dance").
-    activeGenerations.add(generationToken);
-    runFalGeneration(generationToken, imageUrl, motionPreset, { aspectRatio, renderStyle: rawRenderStyle, background, theme: christmas ? 'christmas' : 'classic' }, wallet)
-      .finally(() => activeGenerations.delete(generationToken));
     return { generationToken, taskId: null, status: 'PENDING', canPoll: true };
   }
   const providerResponse = await fetchKling(endpoint, apiKey, {
@@ -437,9 +416,6 @@ async function getDanceStatusInternal(generationToken) {
       canPoll: false
     };
   }
-  if (activeGenerations.has(generationToken)) {
-    return { generationToken, taskId: null, status: 'PENDING', canPoll: true };
-  }
   if (savedVideo.generatedVideoPath && savedVideo.videoUrl) {
     console.info(`[generation:${generationToken}] Returning cached loop preview.`);
     return {
@@ -453,7 +429,7 @@ async function getDanceStatusInternal(generationToken) {
   const queuedJob = await advanceQueuedGeneration(generationToken, savedVideo);
   if (queuedJob) return queuedJob;
   if (savedVideo.sourceVideoUrl) {
-    if (process.env.VERCEL && savedVideo.generationStatus === 'RENDERING' && Date.now() - (savedVideo.renderStartedAt || 0) < RENDER_CLAIM_MS) {
+    if (savedVideo.generationStatus === 'RENDERING' && Date.now() - (savedVideo.renderStartedAt || 0) < RENDER_CLAIM_MS) {
       return { generationToken, taskId: savedVideo.taskId, status: 'PENDING', canPoll: true };
     }
     await saveVideo(generationToken, { renderStartedAt: Date.now() });
