@@ -8,7 +8,9 @@ const MUSIC_TRACKS = {
   disco70: 'Disco70.mp3',
   claudiette: 'Claudiette.MP3',
   doodle_cheerful: 'doodle cheerful.mp3',
-  gentle_waltz: 'A Gentle Waltz.mp3'
+  gentle_waltz: 'A Gentle Waltz.mp3',
+  // Christmas Special soundtrack (also forced by the Christmas card theme).
+  christmas: 'Jazzy We Wish You a Merry Christmas.mp3'
 };
 const DEFAULT_MUSIC = 'disco70';
 // Legacy dance-style ids (old clients, saved sessions) -> unified id.

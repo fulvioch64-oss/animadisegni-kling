@@ -1,31 +1,21 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const zlib = require('node:zlib');
 const opentype = require('opentype.js');
-const sharp = require('sharp');
+const { buildFrameImage, christmasTemplate, PAPER_COLOR, themeTextColor } = require('./card-frame.js');
 
-const FONT_DIRECTORY = path.join(__dirname, 'fonts');
 const MAX_MESSAGE_LENGTH = 60;
 
 // Greeting-card fonts. To add one: put the TTF in api/_lib/fonts, add an entry here, a Google Fonts family in
 // public/index.html, the CSS family in public/app.js and a label in the locales.
-// `width` is the approximate glyph width / font size ratio, `scale` evens out the optical size between fonts.
+// `scale` evens out the optical size between fonts.
 const CARD_FONTS = {
-  playful: { file: 'Fredoka.ttf', width: 0.56, scale: 1 },
-  handwritten: { file: 'Caveat.ttf', width: 0.42, scale: 1.3 },
-  party: { file: 'Baloo2.ttf', width: 0.55, scale: 1 },
-  cute: { file: 'PatrickHand.ttf', width: 0.46, scale: 1.2 }
+  playful: { file: 'Fredoka.ttf', scale: 1 },
+  handwritten: { file: 'Caveat.ttf', scale: 1.3 },
+  party: { file: 'Baloo2.ttf', scale: 1 },
+  cute: { file: 'PatrickHand.ttf', scale: 1.2 }
 };
 const DEFAULT_FONT = 'playful';
-
-// Card frames. `border`/`inner` are the frame colors, `text` is the message color.
-const CARD_TEMPLATES = {
-  classic: { border: [255, 94, 126], inner: [255, 196, 87], text: [59, 47, 74] },
-  balloons: { border: [66, 153, 225], inner: [255, 255, 255], text: [43, 108, 176] },
-  stars: { border: [198, 45, 66], inner: [47, 143, 91], text: [158, 28, 48] },
-  hearts: { border: [255, 127, 168], inner: [255, 255, 255], text: [200, 50, 108] }
-};
-const DEFAULT_TEMPLATE = 'classic';
+const CARD_THEMES = ['classic', 'christmas'];
 
 function cardError(message) {
   const error = new Error(message);
@@ -33,7 +23,7 @@ function cardError(message) {
   return error;
 }
 
-// Returns a sanitized card or null when the user did not customize anything.
+// Returns a sanitized card or null when there is no message.
 function normalizeCard(raw) {
   if (raw === undefined || raw === null || raw === '') return null;
   if (typeof raw !== 'object' || Array.isArray(raw)) throw cardError('card must be an object.');
@@ -45,18 +35,25 @@ function normalizeCard(raw) {
   if (typeof font !== 'string' || !Object.hasOwn(CARD_FONTS, font)) {
     throw cardError(`card.font must be one of: ${Object.keys(CARD_FONTS).join(', ')}.`);
   }
-  const template = raw.template === undefined || raw.template === '' ? DEFAULT_TEMPLATE : raw.template;
-  if (typeof template !== 'string' || !Object.hasOwn(CARD_TEMPLATES, template)) {
-    throw cardError(`card.template must be one of: ${Object.keys(CARD_TEMPLATES).join(', ')}.`);
+  const theme = raw.theme === undefined || raw.theme === '' ? 'classic' : raw.theme;
+  if (typeof theme !== 'string' || !CARD_THEMES.includes(theme)) {
+    throw cardError(`card.theme must be one of: ${CARD_THEMES.join(', ')}.`);
   }
-  if (!message && template === DEFAULT_TEMPLATE) return null;
-  return { message, font, template };
+  if (!message && theme === 'classic') return null;
+  return { message, font, theme };
 }
 
 function wrapMessage(message, maxChars) {
   const lines = [];
   let current = '';
   for (const word of message.split(' ')) {
+    if (Array.from(word).length > maxChars) {
+      if (current) lines.push(current);
+      const characters = Array.from(word);
+      while (characters.length > maxChars) lines.push(characters.splice(0, maxChars).join(''));
+      current = characters.join('');
+      continue;
+    }
     if (current && `${current} ${word}`.length > maxChars) {
       lines.push(current);
       current = word;
@@ -69,266 +66,114 @@ function wrapMessage(message, maxChars) {
 }
 
 // Geometry shared by the frame image and the FFmpeg filters.
-function layoutCard(card, { width, height }) {
+async function layoutCard(card, { width, height }) {
+  // The PNG template is 9:16; other formats keep the generated SVG decorations.
+  const template = card.theme === 'christmas' && width * 16 === height * 9 ? await christmasTemplate(width, height) : null;
   const font = CARD_FONTS[card.font];
-  const lines = card.message ? wrapMessage(card.message, 20) : [];
-  const longest = Math.max(1, ...lines.map((line) => line.length));
-  const fontSize = lines.length
-    ? Math.round(Math.min(96 * font.scale, (width - 220) / (longest * font.width)))
+  const text = (card.message || '').trim();
+  const lines = text ? wrapMessage(text, 20) : [];
+  const loadedFont = lines.length ? await loadCardFont(card.font) : null;
+  const widestLine = lines.length
+    ? Math.max(...lines.map((line) => loadedFont.getAdvanceWidth(line, 1) + 2))
+    : 1;
+  // With the template the message sits in the free paper area below the window, inside the printed border.
+  const freeTop = template ? template.window.y + template.window.height + 24 : 0;
+  const freeBottom = template ? Math.round(height * 0.94) : 0;
+  const textWidth = template ? width - 380 : width - 220;
+  let fontSize = lines.length
+    ? Math.floor(Math.min(96 * font.scale, textWidth / widestLine))
     : 0;
+  if (template && lines.length) fontSize = Math.min(fontSize, Math.floor((freeBottom - freeTop - 24) / (lines.length * 1.18)));
   const lineHeight = Math.round(fontSize * 1.18);
-  const bannerHeight = lines.length ? lines.length * lineHeight + 70 : 0;
-  const bannerBottomMargin = 64;
-  const areaHeight = lines.length ? height - bannerHeight - bannerBottomMargin - 26 : height;
+  const bannerHeight = lines.length ? lines.length * lineHeight + 24 : 0;
+  const bannerBottomMargin = 84;
+  const bannerTop = template
+    ? Math.round(freeTop + (freeBottom - freeTop - bannerHeight) / 2)
+    : height - bannerBottomMargin - bannerHeight;
+  const topZone = Math.round(Math.min(width, height) * 0.15);
+  // Room kept around the artwork window for its double keyline (RING_EXTENT) and breathing space.
+  const regionTop = topZone + 30;
+  const regionBottom = (lines.length ? bannerTop - 8 : height - 26 - 110) - 22;
+  const regionHeight = regionBottom - regionTop;
+  const windowHeight = Math.max(2, Math.floor(Math.min(regionHeight, ((width - 200) * height) / width)));
+  const windowWidth = Math.floor((windowHeight * width) / height);
+  const windowBox = template ? template.window : {
+    x: Math.round((width - windowWidth) / 2),
+    y: regionTop + Math.round((regionHeight - windowHeight) / 2),
+    width: windowWidth,
+    height: windowHeight
+  };
   return {
-    width, height, lines, fontSize, lineHeight, bannerHeight, areaHeight,
-    bannerTop: height - bannerBottomMargin - bannerHeight
+    width, height, lines, fontSize, lineHeight, bannerHeight, bannerTop, topZone, template,
+    window: windowBox, areaHeight: windowBox.height
   };
 }
 
-function crc32(buffer) {
-  let crc = 0xffffffff;
-  for (let i = 0; i < buffer.length; i += 1) {
-    crc ^= buffer[i];
-    for (let k = 0; k < 8; k += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
-  }
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-function encodePng(rgba, width, height) {
-  const stride = width * 4;
-  const raw = Buffer.alloc((stride + 1) * height);
-  for (let y = 0; y < height; y += 1) {
-    rgba.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
-  }
-  const chunk = (type, data) => {
-    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
-    const out = Buffer.alloc(body.length + 8);
-    out.writeUInt32BE(data.length, 0);
-    body.copy(out, 4);
-    out.writeUInt32BE(crc32(body), body.length + 4);
-    return out;
-  };
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(width, 0);
-  header.writeUInt32BE(height, 4);
-  header[8] = 8;
-  header[9] = 6;
-  return Buffer.concat([
-    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    chunk('IHDR', header),
-    chunk('IDAT', zlib.deflateSync(raw, { level: 6 })),
-    chunk('IEND', Buffer.alloc(0))
-  ]);
-}
-
-class Canvas {
-  constructor(width, height) {
-    this.width = width;
-    this.height = height;
-    this.data = Buffer.alloc(width * height * 4);
-  }
-
-  blend(x, y, color, coverage) {
-    const alpha = (color[3] === undefined ? 255 : color[3]) / 255 * coverage;
-    if (alpha <= 0) return;
-    const i = (y * this.width + x) * 4;
-    const d = this.data;
-    const dstA = d[i + 3] / 255;
-    const outA = alpha + dstA * (1 - alpha);
-    for (let c = 0; c < 3; c += 1) {
-      d[i + c] = Math.round((color[c] * alpha + d[i + c] * dstA * (1 - alpha)) / outA);
-    }
-    d[i + 3] = Math.round(outA * 255);
-  }
-
-  // Fills every pixel where inside(x, y) is true, using 3x3 supersampling for smooth edges.
-  fill(bounds, inside, color) {
-    const x0 = Math.max(0, Math.floor(bounds[0]));
-    const y0 = Math.max(0, Math.floor(bounds[1]));
-    const x1 = Math.min(this.width - 1, Math.ceil(bounds[2]));
-    const y1 = Math.min(this.height - 1, Math.ceil(bounds[3]));
-    for (let y = y0; y <= y1; y += 1) {
-      for (let x = x0; x <= x1; x += 1) {
-        let hits = 0;
-        for (let sy = 0; sy < 3; sy += 1) {
-          for (let sx = 0; sx < 3; sx += 1) {
-            if (inside(x + (sx + 0.5) / 3, y + (sy + 0.5) / 3)) hits += 1;
-          }
-        }
-        if (hits) this.blend(x, y, color, hits / 9);
-      }
-    }
-  }
-
-  rect(x, y, w, h, color) {
-    for (let py = Math.max(0, y); py < Math.min(this.height, y + h); py += 1) {
-      for (let px = Math.max(0, x); px < Math.min(this.width, x + w); px += 1) this.blend(px, py, color, 1);
-    }
-  }
-
-  ellipse(cx, cy, rx, ry, color) {
-    this.fill([cx - rx, cy - ry, cx + rx, cy + ry], (x, y) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1, color);
-  }
-
-  polygon(points, color) {
-    const xs = points.map((p) => p[0]);
-    const ys = points.map((p) => p[1]);
-    this.fill([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)], (x, y) => {
-      let inside = false;
-      for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
-        const [xi, yi] = points[i];
-        const [xj, yj] = points[j];
-        if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-      }
-      return inside;
-    }, color);
-  }
-
-  roundRect(x, y, w, h, radius, color) {
-    this.fill([x, y, x + w, y + h], (px, py) => {
-      const dx = Math.max(x + radius - px, 0, px - (x + w - radius));
-      const dy = Math.max(y + radius - py, 0, py - (y + h - radius));
-      return dx * dx + dy * dy <= radius * radius;
-    }, color);
-  }
-
-  line(x0, y0, x1, y1, thickness, color) {
-    const length = Math.hypot(x1 - x0, y1 - y0) || 1;
-    const nx = (-(y1 - y0) / length) * (thickness / 2);
-    const ny = ((x1 - x0) / length) * (thickness / 2);
-    this.polygon([[x0 + nx, y0 + ny], [x1 + nx, y1 + ny], [x1 - nx, y1 - ny], [x0 - nx, y0 - ny]], color);
-  }
-
-  frame(inset, thickness, color, radius) {
-    const w = this.width - inset * 2;
-    const h = this.height - inset * 2;
-    this.fill([inset, inset, inset + w, inset + h], (x, y) => {
-      const outer = inside(x, y, inset, w, h, radius);
-      const innerInset = inset + thickness;
-      return outer && !inside(x, y, innerInset, this.width - innerInset * 2, this.height - innerInset * 2, Math.max(0, radius - thickness));
-    }, color);
-  }
-}
-
-function inside(x, y, inset, w, h, radius) {
-  const dx = Math.max(inset + radius - x, 0, x - (inset + w - radius));
-  const dy = Math.max(inset + radius - y, 0, y - (inset + h - radius));
-  return x >= inset && y >= inset && x <= inset + w && y <= inset + h && dx * dx + dy * dy <= radius * radius;
-}
-
-function star(cx, cy, outer, rotation = -Math.PI / 2) {
-  const points = [];
-  for (let i = 0; i < 10; i += 1) {
-    const radius = i % 2 === 0 ? outer : outer * 0.45;
-    const angle = rotation + (i * Math.PI) / 5;
-    points.push([cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius]);
-  }
-  return points;
-}
-
-function heart(cx, cy, size) {
-  const points = [];
-  for (let i = 0; i < 60; i += 1) {
-    const t = (i / 60) * Math.PI * 2;
-    const x = 16 * Math.sin(t) ** 3;
-    const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
-    points.push([cx + (x / 17) * size, cy - (y / 17) * size]);
-  }
-  return points;
-}
-
-function balloon(canvas, cx, cy, size, color) {
-  const rx = size * 0.8;
-  const ry = size;
-  canvas.line(cx, cy + ry, cx - size * 0.15, cy + ry + size * 1.9, 4, [90, 90, 110, 200]);
-  canvas.polygon([[cx, cy + ry - 2], [cx - size * 0.16, cy + ry + size * 0.2], [cx + size * 0.16, cy + ry + size * 0.2]], color);
-  canvas.ellipse(cx, cy, rx, ry, color);
-  canvas.ellipse(cx - rx * 0.35, cy - ry * 0.4, rx * 0.16, ry * 0.26, [255, 255, 255, 120]);
-}
-
-function decorate(canvas, templateName, W, H) {
-  const m = Math.min(W, H) / 1080;
-  if (templateName === 'balloons') {
-    const colors = [[255, 94, 126], [255, 196, 87], [66, 153, 225], [92, 200, 130]];
-    const spots = [[120, 150, 62, 0], [215, 112, 54, 1], [305, 168, 58, 2], [W / m - 120, 150, 62, 3], [W / m - 215, 112, 54, 0], [W / m - 305, 168, 58, 1]];
-    spots.forEach(([x, y, s, c]) => balloon(canvas, x * m, y * m, s * m, colors[c]));
-    [[0.2, 0.34], [0.8, 0.3], [0.06, 0.5], [0.94, 0.55], [0.1, 0.72], [0.9, 0.78]].forEach(([fx, fy], i) => {
-      canvas.ellipse(W * fx, H * fy, 9 * m, 9 * m, colors[i % colors.length]);
-    });
-  } else if (templateName === 'stars') {
-    const gold = [255, 200, 60];
-    [[110, 120, 62], [W / m - 110, 120, 62], [230, 80, 34], [W / m - 230, 80, 34]].forEach(([x, y, s]) => {
-      canvas.polygon(star(x * m, y * m, s * m), gold);
-    });
-    [[0.07, 0.42, 26], [0.93, 0.38, 26], [0.06, 0.62, 18], [0.94, 0.6, 18]].forEach(([fx, fy, s]) => {
-      canvas.polygon(star(W * fx, H * fy, s * m), [255, 255, 255]);
-    });
-  } else if (templateName === 'hearts') {
-    const pinks = [[255, 94, 126], [255, 160, 190], [220, 60, 110]];
-    [[110, 120, 64, 0], [215, 82, 38, 1], [W / m - 110, 120, 64, 2], [W / m - 215, 82, 38, 0]].forEach(([x, y, s, c]) => {
-      canvas.polygon(heart(x * m, y * m, s * m), pinks[c]);
-    });
-    [[0.07, 0.4, 24], [0.93, 0.45, 24], [0.06, 0.62, 16], [0.94, 0.66, 16]].forEach(([fx, fy, s], i) => {
-      canvas.polygon(heart(W * fx, H * fy, s * m), pinks[i % pinks.length]);
-    });
-  } else {
-    [[70, 70], [W / m - 70, 70]].forEach(([x, y]) => canvas.ellipse(x * m, y * m, 15 * m, 15 * m, [255, 196, 87]));
-  }
-}
-
-function buildFrameImage(card, layout) {
-  const { width: W, height: H } = layout;
-  const theme = CARD_TEMPLATES[card.template];
-  const canvas = new Canvas(W, H);
-  canvas.frame(0, 26, [...theme.border, 255], 0);
-  canvas.frame(36, 6, [...theme.inner, 255], 28);
-  decorate(canvas, card.template, W, H);
-  if (layout.lines.length) {
-    const x = 60;
-    const w = W - 120;
-    canvas.roundRect(x - 6, layout.bannerTop - 6, w + 12, layout.bannerHeight + 12, 40, [...theme.border, 255]);
-    canvas.roundRect(x, layout.bannerTop, w, layout.bannerHeight, 34, [255, 255, 255, 245]);
-  }
-  return encodePng(canvas.data, W, H);
-}
-
+// Literal paths so serverless bundlers (Vercel file tracing) ship the font files with the function.
+const FONT_FILES = {
+  'Fredoka.ttf': path.join(__dirname, 'fonts', 'Fredoka.ttf'),
+  'Caveat.ttf': path.join(__dirname, 'fonts', 'Caveat.ttf'),
+  'Baloo2.ttf': path.join(__dirname, 'fonts', 'Baloo2.ttf'),
+  'PatrickHand.ttf': path.join(__dirname, 'fonts', 'PatrickHand.ttf')
+};
 const loadedFonts = new Map();
 
+// Awaited before any drawing; the promise is cached so concurrent renders share one load, and a failed load is retried.
 function loadFont(file) {
   if (!loadedFonts.has(file)) {
-    const data = fs.readFileSync(path.join(FONT_DIRECTORY, file));
-    loadedFonts.set(file, opentype.parse(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)));
+    const promise = fs.promises.readFile(FONT_FILES[file])
+      .then((data) => opentype.parse(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)));
+    promise.catch(() => loadedFonts.delete(file));
+    loadedFonts.set(file, promise);
   }
   return loadedFonts.get(file);
 }
 
+// Falls back to the default font so a message that is present is always drawn.
+async function loadCardFont(fontKey) {
+  try {
+    return await loadFont(CARD_FONTS[fontKey].file);
+  } catch (error) {
+    if (fontKey === DEFAULT_FONT) throw error;
+    return loadFont(CARD_FONTS[DEFAULT_FONT].file);
+  }
+}
+
 // The message is drawn as vector glyph outlines (no FFmpeg `drawtext`, which needs a libfreetype build that
-// serverless FFmpeg binaries do not ship) and composited into the frame PNG, so FFmpeg only needs `overlay`.
-async function burnMessageIntoFrame(framePng, card, layout) {
-  if (!layout.lines.length) return framePng;
-  const font = loadFont(CARD_FONTS[card.font].file);
-  const color = CARD_TEMPLATES[card.template].text.join(',');
+// serverless FFmpeg binaries do not ship). The SVG fragment is embedded in the frame PNG, so FFmpeg only needs `overlay`.
+// opentype's own toPathData emits "NaN" for coordinates such as 772.0000000000001, which truncates the SVG.
+const formatNumber = (value) => String(Number(value.toFixed(2)));
+function pathData(commands) {
+  return commands.map((command) => {
+    const points = { M: ['x', 'y'], L: ['x', 'y'], Q: ['x1', 'y1', 'x', 'y'], C: ['x1', 'y1', 'x2', 'y2', 'x', 'y'] }[command.type] || [];
+    return command.type + points.map((key) => formatNumber(command[key])).join(' ');
+  }).join('');
+}
+
+async function messageSvg(card, layout) {
+  if (!layout.lines.length) return '';
+  const font = await loadCardFont(card.font);
+  const color = themeTextColor(card.theme).join(',');
   const ascent = (font.ascender / font.unitsPerEm) * layout.fontSize;
   const paths = layout.lines.map((line, i) => {
     const x = (layout.width - font.getAdvanceWidth(line, layout.fontSize)) / 2;
-    const baseline = layout.bannerTop + 35 + i * layout.lineHeight + ascent;
-    return font.getPath(line, x, baseline, layout.fontSize).toPathData(2);
+    const baseline = layout.bannerTop + 12 + i * layout.lineHeight + ascent;
+    return pathData(font.getPath(line, x, baseline, layout.fontSize).commands);
   });
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${layout.width}" height="${layout.height}">`
-    + `<path d="${paths.join(' ')}" fill="rgb(${color})" stroke="rgb(${color})" stroke-width="2" stroke-linejoin="round"/></svg>`;
-  return sharp(framePng).composite([{ input: Buffer.from(svg) }]).png().toBuffer();
+  return `<path d="${paths.join(' ')}" fill="rgb(${color})" stroke="rgb(${color})" stroke-width="2" stroke-linejoin="round"/>`;
 }
 
 // Writes the frame PNG (message included) into `directory` and returns the FFmpeg fit filter.
 // File names are relative: FFmpeg must run with `directory` as its working directory.
 async function prepareCardAssets(card, size, directory) {
-  const layout = layoutCard(card, size);
-  const frame = await burnMessageIntoFrame(buildFrameImage(card, layout), card, layout);
+  const layout = await layoutCard(card, size);
+  const message = await messageSvg(card, layout);
+  const frame = await buildFrameImage(layout, message, card.theme);
   await fs.promises.writeFile(path.join(directory, 'card-frame.png'), frame);
-  const fit = `scale=${size.width}:${layout.areaHeight}:force_original_aspect_ratio=decrease,`
-    + `pad=${size.width}:${size.height}:(ow-iw)/2:(${layout.areaHeight}-ih)/2:white,setsar=1`;
+  const { window: box } = layout;
+  const fit = `scale=${box.width}:${box.height}:force_original_aspect_ratio=${layout.template ? 'increase' : 'decrease'},${layout.template ? `crop=${box.width}:${box.height},` : ''}`
+    + `pad=${size.width}:${size.height}:${box.x}+(${box.width}-iw)/2:${box.y}+(${box.height}-ih)/2:0x${PAPER_COLOR.map((value) => value.toString(16).padStart(2, '0')).join('')},setsar=1`;
   return { layout, fit, frameFile: 'card-frame.png' };
 }
 
-module.exports = { CARD_FONTS, CARD_TEMPLATES, MAX_MESSAGE_LENGTH, normalizeCard, layoutCard, prepareCardAssets };
+module.exports = { CARD_FONTS, MAX_MESSAGE_LENGTH, normalizeCard, layoutCard, prepareCardAssets };

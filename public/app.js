@@ -6,6 +6,7 @@ const fileInput = document.getElementById('fileInput');
 const uploadContent = document.getElementById('uploadContent');
 const imagePreview = document.getElementById('imagePreview');
 const changePhoto = document.getElementById('changePhoto');
+const resetPhoto = document.getElementById('resetPhoto');
 const checkoutStatus = document.getElementById('checkoutStatus');
 const offerCard = document.getElementById('offerCard');
 const btnRetry = document.getElementById('btnRetry');
@@ -81,32 +82,40 @@ const selectedAspectRatio = () => aspectInputs.find((input) => input.checked)?.v
 const languageSelect = document.getElementById('languageSelect');
 const cardMessage = document.getElementById('cardMessage');
 const cardFontInputs = [...document.querySelectorAll('input[name="cardFont"]')];
-const cardTemplateInputs = [...document.querySelectorAll('input[name="cardTemplate"]')];
+const cardThemeInputs = [...document.querySelectorAll('input[name="cardTheme"]')];
 const cardPreview = document.getElementById('cardPreview');
 const cardPreviewImage = document.getElementById('cardPreviewImage');
 const cardPreviewEmpty = document.getElementById('cardPreviewEmpty');
 const cardPreviewBanner = document.getElementById('cardPreviewBanner');
 const checkedValue = (inputs, fallback) => inputs.find((input) => input.checked)?.value || fallback;
 
-// Same wrapping and font sizing rules as api/_lib/card.js, so the preview matches the rendered video.
 const CARD_FONT_METRICS = {
-  playful: { width: 0.56, scale: 1 },
-  handwritten: { width: 0.42, scale: 1.3 },
-  party: { width: 0.55, scale: 1 },
-  cute: { width: 0.46, scale: 1.2 }
+  playful: { family: '"Fredoka", sans-serif', scale: 1 },
+  handwritten: { family: '"Caveat", cursive', scale: 1.3 },
+  party: { family: '"Baloo 2", sans-serif', scale: 1 },
+  cute: { family: '"Patrick Hand", cursive', scale: 1.2 }
 };
+const cardTextContext = document.createElement('canvas').getContext('2d');
+let cardPreviewRenderVersion = 0;
 
 const selectedCard = () => ({
-  message: cardMessage.value.replace(/\s+/g, ' ').trim(),
+  message: (cardMessage?.value || '').replace(/\s+/g, ' ').trim(),
   font: checkedValue(cardFontInputs, 'playful'),
-  template: checkedValue(cardTemplateInputs, 'classic')
+  theme: checkedValue(cardThemeInputs, 'classic')
 });
 
 function wrapCardMessage(message, maxChars) {
   const lines = [];
   let current = '';
   for (const word of message.split(' ')) {
-    if (current && `${current} ${word}`.length > maxChars) {
+    if (Array.from(word).length > maxChars) {
+      if (current) lines.push(current);
+      const characters = Array.from(word);
+      while (characters.length > maxChars) lines.push(characters.splice(0, maxChars).join(''));
+      current = characters.join('');
+      continue;
+    }
+    if (current && Array.from(`${current} ${word}`).length > maxChars) {
       lines.push(current);
       current = word;
     } else {
@@ -117,14 +126,22 @@ function wrapCardMessage(message, maxChars) {
   return lines;
 }
 
-function renderCardPreview() {
+async function renderCardPreview() {
+  const renderVersion = ++cardPreviewRenderVersion;
   const card = selectedCard();
   const metrics = CARD_FONT_METRICS[card.font] || CARD_FONT_METRICS.playful;
+  const baseFontSize = 96 * metrics.scale;
+  cardPreview.dataset.font = card.font;
+  cardPreview.dataset.theme = card.theme;
+  await document.fonts.load(`400 ${baseFontSize}px ${metrics.family}`);
+  await document.fonts.ready;
+  if (renderVersion !== cardPreviewRenderVersion) return;
+
   const lines = card.message ? wrapCardMessage(card.message, 20) : [];
-  const longest = Math.max(1, ...lines.map((line) => line.length));
-  const fontSize = Math.min(96 * metrics.scale, (1080 - 220) / (longest * metrics.width));
+  cardTextContext.font = `400 ${baseFontSize}px ${metrics.family}`;
+  const widestLine = Math.max(1, ...lines.map((line) => cardTextContext.measureText(line).width));
+  const fontSize = Math.min(baseFontSize, baseFontSize * (1080 - 220) / widestLine);
   cardPreview.dataset.ratio = selectedAspectRatio();
-  cardPreview.dataset.template = card.template;
   cardPreview.dataset.font = card.font;
   cardPreviewBanner.replaceChildren(...lines.map((line) => {
     const row = document.createElement('span');
@@ -146,6 +163,7 @@ const VIDEO_KEY = 'animadisegniPreviewUrl';
 const AUDIO_KEY = 'animadisegniPreviewAudioUrl';
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
 let selectedPhoto = null;
+let resetSourceImage = null;
 let uploadGeneration = 0;
 let generationToken = null;
 let generationRunning = false;
@@ -378,12 +396,31 @@ function validVideoUrl(value) {
   }
 }
 
+let presetBeforeChristmas = null;
+
+// Christmas Special always plays the jazzy Christmas track: lock the music menu on it and restore the choice afterwards.
+function syncChristmasMusic() {
+  const christmas = checkedValue(cardThemeInputs, 'classic') === 'christmas';
+  if (christmas && !motionPreset.disabled) {
+    presetBeforeChristmas = motionPreset.value;
+    motionPreset.value = 'christmas';
+    motionPreset.disabled = true;
+  } else if (!christmas && motionPreset.disabled) {
+    motionPreset.disabled = false;
+    if (presetBeforeChristmas && [...motionPreset.options].some((option) => option.value === presetBeforeChristmas)) {
+      motionPreset.value = presetBeforeChristmas;
+    }
+    presetBeforeChristmas = null;
+  }
+}
+
 function saveCustomization() {
+  syncChristmasMusic();
   renderCardPreview();
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
       photo: selectedPhoto,
-      motionPreset: motionPreset.value,
+      motionPreset: motionPreset.disabled ? (presetBeforeChristmas || motionPreset.value) : motionPreset.value,
       aspectRatio: selectedAspectRatio(),
       renderStyle: selectedRenderStyle(),
       background: selectedBackground(),
@@ -400,7 +437,7 @@ aspectInputs.forEach((input) => input.addEventListener('change', saveCustomizati
 renderStyleInputs.forEach((input) => input.addEventListener('change', saveCustomization));
 backgroundInputs.forEach((input) => input.addEventListener('change', saveCustomization));
 cardMessage.addEventListener('input', saveCustomization);
-[...cardFontInputs, ...cardTemplateInputs].forEach((input) => input.addEventListener('change', saveCustomization));
+cardFontInputs.concat(cardThemeInputs).forEach((input) => input.addEventListener('change', saveCustomization));
 languageSelect.addEventListener('change', async () => {
   try {
     await i18n.setLocale(languageSelect.value);
@@ -449,12 +486,14 @@ function setPhoto(file) {
         btnTest.disabled = !selectedPhoto?.imageUrl;
         return;
       }
+      resetSourceImage = image;
       const dataUrl = cropped;
       selectedPhoto = { name: file.name, type: 'image/jpeg', dataUrl, imageUrl: null };
       imagePreview.src = dataUrl;
       imagePreview.classList.remove('hidden');
       uploadContent.classList.add('hidden');
       changePhoto.classList.remove('hidden');
+      resetPhoto.classList.remove('hidden');
       saveCustomization();
       uploadPhoto(selectedPhoto, currentGeneration);
     };
@@ -501,10 +540,11 @@ async function uploadPhoto(photo, currentGeneration) {
 }
 
 uploadZone.addEventListener('click', (event) => {
-  if (event.target === changePhoto) return;
+  if (event.target.closest('.preview-actions')) return;
   fileInput.click();
 });
 uploadZone.addEventListener('keydown', (event) => {
+  if (event.target.closest('.preview-actions')) return;
   if (event.key === 'Enter' || event.key === ' ') {
     event.preventDefault();
     fileInput.click();
@@ -513,6 +553,22 @@ uploadZone.addEventListener('keydown', (event) => {
 changePhoto.addEventListener('click', (event) => {
   event.stopPropagation();
   fileInput.click();
+});
+resetPhoto.addEventListener('click', async (event) => {
+  event.stopPropagation();
+  if (!selectedPhoto) return;
+
+  const startGeneration = uploadGeneration;
+  const cropped = await openCropper(resetSourceImage || imagePreview, selectedAspectRatio());
+  if (!cropped || startGeneration !== uploadGeneration) return;
+  const currentGeneration = ++uploadGeneration;
+  generationToken = null;
+  sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(VIDEO_KEY);
+  selectedPhoto = { ...selectedPhoto, dataUrl: cropped, imageUrl: null, imageUrlExpiresAt: null };
+  imagePreview.src = cropped;
+  saveCustomization();
+  uploadPhoto(selectedPhoto, currentGeneration);
 });
 fileInput.addEventListener('change', () => {
   setPhoto(fileInput.files[0]);
@@ -552,15 +608,18 @@ function restoreCustomization() {
       if (typeof savedCard.message === 'string') cardMessage.value = savedCard.message.slice(0, 60);
       const savedFont = cardFontInputs.find((input) => input.value === savedCard.font);
       if (savedFont) savedFont.checked = true;
-      const savedTemplate = cardTemplateInputs.find((input) => input.value === savedCard.template);
-      if (savedTemplate) savedTemplate.checked = true;
+      const savedTheme = cardThemeInputs.find((input) => input.value === savedCard.theme);
+      if (savedTheme) savedTheme.checked = true;
     }
+    syncChristmasMusic();
     if (customization.photo && typeof customization.photo.dataUrl === 'string') {
       selectedPhoto = customization.photo;
+      resetSourceImage = imagePreview;
       imagePreview.src = selectedPhoto.dataUrl;
       imagePreview.classList.remove('hidden');
       uploadContent.classList.add('hidden');
       changePhoto.classList.remove('hidden');
+      resetPhoto.classList.remove('hidden');
       const savedImageUrl = validImageSource(selectedPhoto.imageUrl);
       if (savedImageUrl) {
         selectedPhoto.imageUrl = savedImageUrl;
@@ -918,13 +977,14 @@ async function startGeneration(isRetry) {
 
   try {
     if (!selectedPhoto.imageUrl) throw new Error(t('errorImageStillUploading'));
+    const card = selectedCard();
     let started = await callGenerateApi({
       imageUrl: selectedPhoto.imageUrl,
       motionPreset: motionPreset.value,
       aspectRatio: selectedAspectRatio(),
       renderStyle: selectedRenderStyle(),
       background: selectedBackground(),
-      card: selectedCard(),
+      card,
       walletId: getWalletId(),
       ...(retryOfToken ? { retryOfToken } : {})
     });

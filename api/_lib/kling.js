@@ -1,8 +1,8 @@
 const crypto = require('node:crypto');
-const { consumeGeneration, getVideo, saveVideo, walletGet, walletConsume, walletRefund, acquireLock, releaseLock } = require('./store.js');
+const { consumeGeneration, getVideo, saveVideo, walletGet, walletConsume, walletRefund } = require('./store.js');
 const { apiError, parseWalletId } = require('./wallet.js');
 const { renderLoopVideo, addAudioTrack } = require('./video-loop.js');
-const { generateVideoFromImage, buildPrompt } = require('./fal-video.js');
+const { generateVideoFromImage, submitVideoFromImage, checkFalVideo, buildPrompt } = require('./fal-video.js');
 const { prepareImage, uploadFileToFalStorage } = require('./image-upload.js');
 const { pickTrack, resolveTrackPath, trackUrl } = require('./music.js');
 const { normalizeAspectRatio } = require('./aspect-ratio.js');
@@ -61,14 +61,14 @@ const MAX_IMAGE_DATA_URL_LENGTH = Math.ceil(10 * 1024 * 1024 * 4 / 3) + 64;
 function validateImageUrl(value) {
   if (typeof value !== 'string' || !/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value)
     || value.length > MAX_IMAGE_DATA_URL_LENGTH) {
-    throw requestError('imageUrl deve essere un’immagine JPG, PNG o WEBP in formato data URI Base64 (max 10 MB).');
+    throw requestError('imageUrl deve essere unÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢immagine JPG, PNG o WEBP in formato data URI Base64 (max 10 MB).');
   }
   return value;
 }
 
 function validateMotionPreset(value) {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > 100) {
-    throw requestError('motionPreset deve contenere l’ID del movimento selezionato.');
+    throw requestError('motionPreset deve contenere lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ID del movimento selezionato.');
   }
   return value.trim();
 }
@@ -89,10 +89,10 @@ function getKlingConfig() {
   try {
     url = new URL(endpoint);
   } catch {
-    throw requestError('KLING_API_URL non è un URL valido.', 503);
+    throw requestError('KLING_API_URL non ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨ un URL valido.', 503);
   }
   if (!isAllowedGatewayProtocol(url)) {
-    throw requestError('KLING_API_URL deve usare HTTPS (HTTP è consentito solo verso localhost in sviluppo).', 503);
+    throw requestError('KLING_API_URL deve usare HTTPS (HTTP ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨ consentito solo verso localhost in sviluppo).', 503);
   }
   return { endpoint: url.href, apiKey };
 }
@@ -105,10 +105,10 @@ function getStatusConfig(taskId) {
   try {
     url = new URL(statusUrl);
   } catch {
-    throw requestError('KLING_API_STATUS_URL non è un URL valido.', 503);
+    throw requestError('KLING_API_STATUS_URL non ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨ un URL valido.', 503);
   }
   if (!isAllowedGatewayProtocol(url)) {
-    throw requestError('KLING_API_STATUS_URL deve usare HTTPS (HTTP è consentito solo verso localhost in sviluppo).', 503);
+    throw requestError('KLING_API_STATUS_URL deve usare HTTPS (HTTP ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨ consentito solo verso localhost in sviluppo).', 503);
   }
   return url.href;
 }
@@ -190,21 +190,15 @@ async function fetchKling(url, apiKey, options = {}) {
   return parseProviderResponse(response);
 }
 
-const GENERATION_LOCK_TTL_SECONDS = 20 * 60;
-
 // The credit is charged only once the provider has returned the video, never before.
-// Availability is checked up front and a per-wallet lock keeps concurrent requests from over-spending one credit.
+// There is no per-user lock: every request runs on its own, and the atomic credit consumption keeps a wallet from overspending.
 async function createDance(payload, clientIp) {
   const walletId = parseWalletId(payload?.walletId);
   const kind = await creditKindFor(payload, walletId);
   const available = await walletGet(walletId);
   if ((kind === 'retry' ? available.retryCredits : available.mainCredits) <= 0) throw noCreditsError(kind);
 
-  const lockKey = `animadisegni:generation-lock:${walletId}`;
-  if (!(await acquireLock(lockKey, GENERATION_LOCK_TTL_SECONDS))) {
-    throw apiError('A video is already being generated for this account. Wait for it to finish.', 409, 'GENERATION_IN_PROGRESS');
-  }
-  const wallet = { walletId, creditKind: kind, charged: false, deferRelease: false, release: () => releaseLock(lockKey).catch(() => {}) };
+  const wallet = { walletId, creditKind: kind, charged: false };
   try {
     const result = await createDanceInternal(payload, clientIp, wallet);
     const saved = await getVideo(result.generationToken);
@@ -213,8 +207,6 @@ async function createDance(payload, clientIp) {
     // Charged only after a successful provider answer; if anything fails afterwards the credit is returned.
     if (wallet.charged) await walletRefund(walletId, kind).catch((refundError) => console.error('[credits] Refund failed:', refundError));
     throw error;
-  } finally {
-    if (!wallet.deferRelease) await wallet.release();
   }
 }
 
@@ -230,7 +222,7 @@ async function chargeCredit(generationToken, wallet) {
   if (!spent.ok) throw noCreditsError(wallet.creditKind);
   wallet.charged = true;
   await saveVideo(generationToken, { creditCharged: true, paid: true });
-  console.info(`[credits] Wallet ${wallet.walletId.slice(0, 8)}…: 1 ${wallet.creditKind} credit used after a successful generation (${spent.mainCredits} main / ${spent.retryCredits} retry left).`);
+  console.info(`[credits] Wallet ${wallet.walletId.slice(0, 8)}ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦: 1 ${wallet.creditKind} credit used after a successful generation (${spent.mainCredits} main / ${spent.retryCredits} retry left).`);
 }
 
 // Calls Fal.ai and guarantees a non-empty video URL; any failure or timeout is reported clearly and costs no credit.
@@ -240,11 +232,11 @@ async function requestFalVideo(imageUrl, motionPreset, options) {
     url = await generateVideoFromImage(imageUrl, motionPreset, options);
   } catch (error) {
     if (!error.statusCode) error.statusCode = 502;
-    error.message = `${error.message} Nessun credito è stato scalato. / No credit was charged.`;
+    error.message = `${error.message} Nessun credito ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨ stato scalato. / No credit was charged.`;
     throw error;
   }
   if (typeof url !== 'string' || !url) {
-    throw apiError('Il servizio video non ha restituito il video. Nessun credito è stato scalato. / The video service returned no video. No credit was charged.', 502, 'GENERATION_FAILED');
+    throw apiError('Il servizio video non ha restituito il video. Nessun credito ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨ stato scalato. / The video service returned no video. No credit was charged.', 502, 'GENERATION_FAILED');
   }
   return url;
 }
@@ -283,12 +275,10 @@ async function runFalGeneration(generationToken, imageUrl, motionPreset, options
     await renderAndSaveVideo(generationToken, falVideoUrl);
   } catch (error) {
     await failGeneration(generationToken, error, wallet);
-  } finally {
-    await wallet.release();
   }
 }
 
-async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMotionPreset, aspectRatio: rawAspectRatio, renderStyle: rawRenderStyle, background: rawBackground, card: rawCard, music: rawMusic }, clientIp, wallet) {
+async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMotionPreset, aspectRatio: rawAspectRatio, renderStyle: rawRenderStyle, background: rawBackground, card: rawCard, music: rawMusic, style: rawStyle }, clientIp, wallet) {
   const { walletId, creditKind } = wallet;
   const aspectRatio = normalizeAspectRatio(rawAspectRatio);
   const card = normalizeCard(rawCard);
@@ -314,7 +304,8 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
   }
   const generationToken = crypto.randomUUID();
   console.info(`[generation:${generationToken}] Submitting image-to-video request to Kling.`);
-  const audioFile = pickTrack(rawMusic ?? motionPreset).file;
+  const christmas = card?.theme === 'christmas' || rawStyle === 'christmas';
+  const audioFile = pickTrack(christmas ? 'christmas' : rawMusic ?? motionPreset).file;
   await saveVideo(generationToken, {
     motionPreset,
     aspectRatio,
@@ -331,7 +322,7 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
   await createOrder({
     orderId: generationToken,
     params: {
-      prompt: buildPrompt(motionPreset, rawRenderStyle, background),
+      prompt: buildPrompt(motionPreset, rawRenderStyle, background, christmas ? 'christmas' : 'classic'),
       style: rawRenderStyle ?? null,
       background,
       image: imageUrl,
@@ -342,19 +333,16 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
     }
   }).catch((error) => console.error(`[orders] Unable to create order ${generationToken}:`, error.message));
   if (useFal && process.env.VERCEL) {
-    // Serverless functions are frozen once the response is sent, so the job must complete within the request.
-    const falVideoUrl = await requestFalVideo(imageUrl, motionPreset, { aspectRatio, renderStyle: rawRenderStyle, background });
-    await chargeCredit(generationToken, wallet);
-    await saveVideo(generationToken, { sourceVideoUrl: falVideoUrl, generationStatus: 'RENDERING' });
-    const videoUrl = await renderAndSaveVideo(generationToken, falVideoUrl);
-    return { generationToken, taskId: null, status: 'COMPLETE', videoUrl, canPoll: false };
+    // Serverless functions are frozen once the response is sent: the job is queued on Fal.ai and finished by the status polls.
+    const queued = await submitVideoFromImage(imageUrl, motionPreset, { aspectRatio, renderStyle: rawRenderStyle, background, theme: christmas ? 'christmas' : 'classic' });
+    await saveVideo(generationToken, { falRequestId: queued.requestId, falModelId: queued.modelId, falSubmittedAt: Date.now(), generationStatus: 'GENERATING' });
+    return { generationToken, taskId: null, status: 'PENDING', canPoll: true };
   }
   if (useFal) {
     // Fal generation takes minutes: run it in the background and let the client poll, so no HTTP request stays open
     // (tunnels/proxies/browsers drop long-lived requests, which surfaced as "Couldn't reach /api/generate-dance").
     activeGenerations.add(generationToken);
-    wallet.deferRelease = true;
-    runFalGeneration(generationToken, imageUrl, motionPreset, { aspectRatio, renderStyle: rawRenderStyle, background }, wallet)
+    runFalGeneration(generationToken, imageUrl, motionPreset, { aspectRatio, renderStyle: rawRenderStyle, background, theme: christmas ? 'christmas' : 'classic' }, wallet)
       .finally(() => activeGenerations.delete(generationToken));
     return { generationToken, taskId: null, status: 'PENDING', canPoll: true };
   }
@@ -366,10 +354,10 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
   const normalized = normalizeProviderResult(providerResponse);
   console.info(`[generation:${generationToken}] Kling returned status ${normalized.status}${normalized.taskId ? ` (task ${normalized.taskId})` : ''}.`);
   if (normalized.status === 'ERROR') {
-    throw requestError(normalized.error || 'Il gateway Kling non è riuscito a generare il video.', 502);
+    throw requestError(normalized.error || 'Il gateway Kling non ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨ riuscito a generare il video.', 502);
   }
   if (normalized.status === 'COMPLETE' && !normalized.videoUrl) {
-    throw requestError('Il gateway Kling segnala il completamento senza restituire l’URL MP4.', 502);
+    throw requestError('Il gateway Kling segnala il completamento senza restituire lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢URL MP4.', 502);
   }
   if (!normalized.videoUrl && !normalized.taskId) {
     throw requestError('Il gateway Kling non ha restituito un URL video o un ID task.', 502);
@@ -394,6 +382,40 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
   };
 }
 
+const QUEUE_TIMEOUT_MS = 15 * 60 * 1000;
+const RENDER_CLAIM_MS = 3 * 60 * 1000;
+
+// Polled on Vercel: asks Fal.ai about the queued job and, once it is ready, charges the credit and renders the video.
+async function advanceQueuedGeneration(generationToken, savedVideo) {
+  if (!savedVideo.falRequestId || savedVideo.sourceVideoUrl) return null;
+  const wallet = { walletId: savedVideo.walletId, creditKind: savedVideo.creditKind, charged: false };
+  const pending = { generationToken, taskId: null, status: 'PENDING', canPoll: true };
+  const fail = async (error) => {
+    await failGeneration(generationToken, error, wallet);
+    return { generationToken, taskId: null, status: 'ERROR', error: error.message, canPoll: false };
+  };
+  if (Date.now() - (savedVideo.falSubmittedAt || 0) > QUEUE_TIMEOUT_MS) {
+    return fail(new Error('Fal.ai non ha completato il video in tempo. Nessun credito è stato scalato. Riprova.'));
+  }
+  let check;
+  try {
+    check = await checkFalVideo(savedVideo.falModelId, savedVideo.falRequestId);
+  } catch (error) {
+    // A network hiccup is not a failed job: keep polling.
+    if (error.statusCode === 503 && /rete/i.test(error.message)) return pending;
+    return fail(error);
+  }
+  if (!check.done) return pending;
+  try {
+    await saveVideo(generationToken, { sourceVideoUrl: check.url, generationStatus: 'RENDERING', renderStartedAt: Date.now() });
+    await chargeCredit(generationToken, wallet);
+    const videoUrl = await renderAndSaveVideo(generationToken, check.url);
+    return { generationToken, taskId: null, status: 'COMPLETE', videoUrl, canPoll: false };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
 async function getDanceStatus(generationToken) {
   const result = await getDanceStatusInternal(generationToken);
   const saved = await getVideo(generationToken);
@@ -405,13 +427,13 @@ async function getDanceStatusInternal(generationToken) {
     throw requestError('Identificativo della richiesta non valido.');
   }
   const savedVideo = await getVideo(generationToken);
-  if (!savedVideo) throw requestError('Task non trovato o non più disponibile.', 404);
+  if (!savedVideo) throw requestError('Task non trovato o non piÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹ disponibile.', 404);
   if (savedVideo.generationStatus === 'ERROR') {
     return {
       generationToken,
       taskId: savedVideo.taskId,
       status: 'ERROR',
-      error: savedVideo.errorMessage || 'Il gateway Kling non è riuscito a generare il video.',
+      error: savedVideo.errorMessage || 'Il gateway Kling non ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨ riuscito a generare il video.',
       canPoll: false
     };
   }
@@ -428,7 +450,13 @@ async function getDanceStatusInternal(generationToken) {
       canPoll: false
     };
   }
+  const queuedJob = await advanceQueuedGeneration(generationToken, savedVideo);
+  if (queuedJob) return queuedJob;
   if (savedVideo.sourceVideoUrl) {
+    if (process.env.VERCEL && savedVideo.generationStatus === 'RENDERING' && Date.now() - (savedVideo.renderStartedAt || 0) < RENDER_CLAIM_MS) {
+      return { generationToken, taskId: savedVideo.taskId, status: 'PENDING', canPoll: true };
+    }
+    await saveVideo(generationToken, { renderStartedAt: Date.now() });
     console.info(`[generation:${generationToken}] Resuming loop render from saved Kling output.`);
     const videoUrl = await renderAndSaveVideo(generationToken, savedVideo.sourceVideoUrl);
     return {
@@ -442,10 +470,10 @@ async function getDanceStatusInternal(generationToken) {
   if (!savedVideo.taskId) {
     if (savedVideo.generationStatus === 'SUBMITTING' && savedVideo.walletId) {
       // The server was restarted while the video was being generated: the job is lost.
-      await failGeneration(generationToken, new Error('La generazione è stata interrotta (server riavviato). Riprova: nessun credito è stato scalato.'), { walletId: savedVideo.walletId, creditKind: savedVideo.creditKind, charged: savedVideo.creditCharged === true });
-      return { generationToken, taskId: null, status: 'ERROR', error: 'La generazione è stata interrotta (server riavviato). Riprova: nessun credito è stato scalato.', canPoll: false };
+      await failGeneration(generationToken, new Error('La generazione ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨ stata interrotta (server riavviato). Riprova: nessun credito ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨ stato scalato.'), { walletId: savedVideo.walletId, creditKind: savedVideo.creditKind, charged: savedVideo.creditCharged === true });
+      return { generationToken, taskId: null, status: 'ERROR', error: 'La generazione ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨ stata interrotta (server riavviato). Riprova: nessun credito ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨ stato scalato.', canPoll: false };
     }
-    throw requestError('Task non trovato o non più disponibile.', 404);
+    throw requestError('Task non trovato o non piÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹ disponibile.', 404);
   }
 
   const statusEndpoint = getStatusConfig(savedVideo.taskId);
@@ -463,7 +491,7 @@ async function getDanceStatusInternal(generationToken) {
       generationToken,
       taskId: savedVideo.taskId,
       status: 'ERROR',
-      error: normalized.error || 'Il gateway Kling non è riuscito a generare il video.',
+      error: normalized.error || 'Il gateway Kling non ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨ riuscito a generare il video.',
       canPoll: false
     };
   }
@@ -477,7 +505,7 @@ async function getDanceStatusInternal(generationToken) {
       canPoll: false
     };
   } else if (normalized.status === 'COMPLETE') {
-    throw requestError('Il gateway Kling segnala il completamento senza restituire l’URL MP4.', 502);
+    throw requestError('Il gateway Kling segnala il completamento senza restituire lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢URL MP4.', 502);
   } else if (normalized.status) {
     await saveVideo(generationToken, { generationStatus: normalized.status });
   }

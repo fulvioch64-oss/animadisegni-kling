@@ -42,7 +42,7 @@ const MODELS = {
 // {DANCE} is replaced with the dance action of the selected music track.
 const INTROS = {
   real_photo: "2D character animation of a children's drawing on a clean paper background. The character performs a {DANCE}. Keep the original illustration lines intact, smooth motion, no background generation, no extra scene elements, no warping.",
-  claymation: "3D claymation character animation of a children's illustration, bringing the character into a vibrant 3D animated style. The character performs a {DANCE}. Smooth motion, clean environment, high quality render."
+  claymation: "3D claymation character animation of a children's illustration: the character becomes a volumetric clay sculpture with soft rounded plasticine forms, tangible clay texture and gentle depth shading, keeping the original shapes and colors. The character performs a {DANCE}. Smooth stop-motion style motion, clean environment, high quality render."
 };
 INTROS.faithful = INTROS.real_photo;
 const NEGATIVE_PROMPT = 'text, letters, watermark, extra limbs, page splitting, card opening, frame morphing, camera movement, blurry, low resolution, distortion, background generation, turning around, 360 rotation, showing back, profile view, turning back to camera, spin, revolving, delayed motion, static opening';
@@ -54,7 +54,7 @@ const MOTION_RULES = 'The character starts dancing dynamically from frame 1, ins
 // To add a music genre, add one entry here.
 const DANCE_PROMPTS = {
   reggaeton: 'bouncy reggaeton dance with a rhythmic groove: hip sways, shoulder rolls, playful side steps and a happy smile',
-  disco: 'classic upbeat 1980s Italian-style disco pop dance: gentle side steps, clapping hands, bouncing on the feet and waving to the audience',
+  disco: 'Smooth and continuous energetic 1970s disco dance movement starting immediately from frame 0. The drawn character dances fluidly with natural body motion, rhythm, hand points, and continuous groove without keyframe stutters, sudden jumps, or idle pauses.',
   hiphop: 'playful hip-hop dance with bounce: rhythmic arm swings, small hops, a cheerful groove and a confident smile',
   pop: 'catchy pop dance: energetic side steps, arm waves, bouncing up and down and a bright smile',
   latin: 'lively latin dance with quick footwork: side steps, hip movement and joyful arm gestures',
@@ -63,7 +63,8 @@ const DANCE_PROMPTS = {
   ballet: 'elegant, light ballet dance: graceful arm movements, tiptoe steps, gentle swaying and a happy bow',
   waltz: 'graceful waltz in three-beat time: gliding side steps, gentle swaying, arms held in a soft waltz pose and a happy bow',
   relax: 'slow, calm dance to a gentle waltz: soft swaying from side to side, slow arm movements and a peaceful smile',
-  sweet: 'tender, emotional dance: slow gentle sways, hands held to the heart and a warm, loving smile'
+  sweet: 'tender, emotional dance: slow gentle sways, hands held to the heart and a warm, loving smile',
+  christmas: 'Joyful Christmas swing dance movement, energetic Lindy hop steps, cheerful holiday rhythm, smooth continuous bouncing and footwork, festive celebration vibe, seamless looping movement'
 };
 // Unified "style + music" ids (lowercase letters/digits after normalizeStyle) reuse the existing prompts.
 const DANCE_ALIASES = {
@@ -83,9 +84,14 @@ function normalizeRenderStyle(value) {
   return typeof value === 'string' && Object.hasOwn(INTROS, value) ? value : DEFAULT_RENDER_STYLE;
 }
 
-function buildPrompt(motionPreset, renderStyle, background) {
-  const dance = DANCE_PROMPTS[normalizeStyle(motionPreset)] || DEFAULT_DANCE;
-  const prompt = INTROS[normalizeRenderStyle(renderStyle)].replace('{DANCE}', dance) + ' ' + MOTION_RULES;
+const CHRISTMAS_TOUCH = ' Festive Christmas atmosphere: gentle falling snowflakes, warm twinkling holiday lights and a joyful, cozy holiday spirit, while the character itself stays unchanged.';
+
+function buildPrompt(motionPreset, renderStyle, background, theme) {
+  const dance = DANCE_PROMPTS[theme === 'christmas' ? 'christmas' : normalizeStyle(motionPreset)] || DEFAULT_DANCE;
+  const intro = INTROS[normalizeRenderStyle(renderStyle)];
+  // A dance entry that is already a full sentence replaces the whole "The character performs a {DANCE}." clause.
+  const prompt = (dance.endsWith('.') ? intro.replace('The character performs a {DANCE}.', dance) : intro.replace('{DANCE}', dance))
+    + ' ' + MOTION_RULES + (theme === 'christmas' ? CHRISTMAS_TOUCH : '');
   if (!background || background === 'original') return prompt;
   // The scene is already part of the source image: keep it instead of forbidding background content.
   return prompt
@@ -126,43 +132,49 @@ async function assertImageReachable(imageUrl) {
   if (!response || !response.ok || !type.startsWith('image/')) {
     const detail = response ? `HTTP ${response.status}` : 'nessuna risposta';
     const hint = response?.status === 404 || response?.status === 530 || response?.status === 502 || !response
-      ? 'Il tunnel temporaneo è probabilmente scaduto o spento: riavvialo, copia il nuovo URL in PUBLIC_BASE_URL (.env.local) e riavvia il server.'
+      ? 'Il tunnel temporaneo ÃƒÆ’Ã‚Â¨ probabilmente scaduto o spento: riavvialo, copia il nuovo URL in PUBLIC_BASE_URL (.env.local) e riavvia il server.'
       : 'Controlla che il tunnel di PUBLIC_BASE_URL sia attivo e punti a questo server.';
-    console.error(TUNNEL_HELP(`L’immagine ${imageUrl} non è raggiungibile (${detail})`));
-    const error = new Error(`L’immagine non è raggiungibile pubblicamente (${detail}). ${hint}`);
+    console.error(TUNNEL_HELP(`LÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢immagine ${imageUrl} non ÃƒÆ’Ã‚Â¨ raggiungibile (${detail})`));
+    const error = new Error(`LÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢immagine non ÃƒÆ’Ã‚Â¨ raggiungibile pubblicamente (${detail}). ${hint}`);
     error.statusCode = 502;
     throw error;
   }
 }
 
-async function generateVideoFromImage(imageUrl, motionPreset, { referenceMotionVideoUrl = null, aspectRatio = DEFAULT_ASPECT_RATIO, renderStyle = DEFAULT_RENDER_STYLE, background = 'original' } = {}) {
+// Validates the key, configures the client and builds the model + input shared by the blocking and the queued calls.
+async function prepareFalCall(imageUrl, motionPreset, { referenceMotionVideoUrl = null, aspectRatio = DEFAULT_ASPECT_RATIO, renderStyle = DEFAULT_RENDER_STYLE, background = 'original', theme = 'classic' } = {}) {
+  const falKey = getFalKey();
+  console.log('FAL_KEY caricata:', falKey ? 'Presente' : 'Mancante');
+  if (!falKey) {
+    const error = new Error('Configura FAL_KEY in .env.local per usare Fal.ai.');
+    error.statusCode = 503;
+    throw error;
+  }
+  // The client sends "Authorization: Key <FAL_KEY>" on every request.
+  fal.config({ credentials: falKey });
+  console.log('[fal-video] Final image URL sent to Fal.ai:', imageUrl);
+  // Images uploaded to Fal storage are already reachable by Fal: the tunnel preflight only applies to self-hosted URLs.
+  if (!/^https:\/\/[^/]*\.(?:fal\.media|fal\.run|fal\.ai)\//i.test(imageUrl)) await assertImageReachable(imageUrl);
+  const model = resolveModel();
+  const input = {
+    [model.imageField]: imageUrl,
+    prompt: buildPrompt(motionPreset, renderStyle, background, theme),
+    negative_prompt: buildNegativePrompt(background),
+    duration: '5',
+    ...model.extraInput
+  };
+  // Kling image-to-video takes its format from the source image (already fitted to the chosen ratio),
+  // so the field is only sent for models that declare one.
+  if (model.aspectRatioField) input[model.aspectRatioField] = aspectRatio;
+  // Future: guide video for dance steps, only sent when the selected model supports it.
+  if (referenceMotionVideoUrl && model.motionVideoField) input[model.motionVideoField] = referenceMotionVideoUrl;
+  console.info(`[fal-video] Calling ${model.id} with payload:`, JSON.stringify({ input }));
+  return { model, input };
+}
+
+async function generateVideoFromImage(imageUrl, motionPreset, options = {}) {
   try {
-    const falKey = getFalKey();
-    console.log('FAL_KEY caricata:', falKey ? 'Presente' : 'Mancante');
-    if (!falKey) {
-      const error = new Error('Configura FAL_KEY in .env.local per usare Fal.ai.');
-      error.statusCode = 503;
-      throw error;
-    }
-    // The client sends "Authorization: Key <FAL_KEY>" on every request.
-    fal.config({ credentials: falKey });
-    console.log('[fal-video] Final image URL sent to Fal.ai:', imageUrl);
-    // Images uploaded to Fal storage are already reachable by Fal: the tunnel preflight only applies to self-hosted URLs.
-    if (!/^https:\/\/[^/]*\.(?:fal\.media|fal\.run|fal\.ai)\//i.test(imageUrl)) await assertImageReachable(imageUrl);
-    const model = resolveModel();
-    const input = {
-      [model.imageField]: imageUrl,
-      prompt: buildPrompt(motionPreset, renderStyle, background),
-      negative_prompt: buildNegativePrompt(background),
-      duration: '5',
-      ...model.extraInput
-    };
-    // Kling image-to-video takes its format from the source image (already fitted to the chosen ratio),
-    // so the field is only sent for models that declare one.
-    if (model.aspectRatioField) input[model.aspectRatioField] = aspectRatio;
-    // Future: guide video for dance steps, only sent when the selected model supports it.
-    if (referenceMotionVideoUrl && model.motionVideoField) input[model.motionVideoField] = referenceMotionVideoUrl;
-    console.info(`[fal-video] Calling ${model.id} with payload:`, JSON.stringify({ input }));
+    const { model, input } = await prepareFalCall(imageUrl, motionPreset, options);
     const result = await fal.subscribe(model.id, { input, logs: true, abortSignal: AbortSignal.timeout(FAL_TIMEOUT_MS) });
 
     return extractVideoUrl(result);
@@ -172,13 +184,39 @@ async function generateVideoFromImage(imageUrl, motionPreset, { referenceMotionV
   }
 }
 
+// Queues the job on Fal.ai and returns at once: the caller polls checkFalVideo, so no request stays open for minutes.
+async function submitVideoFromImage(imageUrl, motionPreset, options = {}) {
+  try {
+    const { model, input } = await prepareFalCall(imageUrl, motionPreset, options);
+    const { request_id: requestId } = await fal.queue.submit(model.id, { input });
+    if (!requestId) throw new Error('Fal.ai non ha restituito un identificativo di richiesta.');
+    return { requestId, modelId: model.id };
+  } catch (error) {
+    console.error('[fal-video] submitVideoFromImage failed:', error?.status, error?.name, JSON.stringify(error?.body ?? error?.message));
+    throw toFriendlyError(error);
+  }
+}
+
+// Returns { done: false } while Fal.ai is still working, or { done: true, url } once the video is ready.
+async function checkFalVideo(modelId, requestId) {
+  try {
+    fal.config({ credentials: getFalKey() });
+    const status = await fal.queue.status(modelId, { requestId });
+    if (status.status !== 'COMPLETED') return { done: false, status: status.status };
+    const result = await fal.queue.result(modelId, { requestId });
+    return { done: true, url: extractVideoUrl(result) };
+  } catch (error) {
+    console.error('[fal-video] checkFalVideo failed:', error?.status, error?.name, JSON.stringify(error?.body ?? error?.message));
+    throw toFriendlyError(error);
+  }
+}
 // Fal models return the video in slightly different shapes: check them in order and accept only a valid http(s) URL.
 function extractVideoUrl(result) {
   const candidates = [result?.data?.video?.url, result?.data?.video_url, result?.data?.videos?.[0]?.url];
   const url = candidates.find((value) => typeof value === 'string' && /^https?:\/\/\S+$/i.test(value.trim()));
   if (!url) {
     console.error('[fal-video] No valid video URL in the Fal.ai response:', JSON.stringify(result?.data));
-    const error = new Error('Fal.ai ha risposto senza un URL video valido. Nessun credito è stato scalato: riprova.');
+    const error = new Error('Fal.ai ha risposto senza un URL video valido. Nessun credito ÃƒÆ’Ã‚Â¨ stato scalato: riprova.');
     error.statusCode = 502;
     error.code = 'GENERATION_FAILED';
     throw error;
@@ -203,7 +241,7 @@ function toFriendlyError(error) {
     message = 'Credito Fal.ai esaurito: ricarica il saldo su fal.ai.';
     statusCode = 503;
   } else if (status === 422 || /image|format|unsupported/i.test(detail)) {
-    message = `Fal.ai ha rifiutato l’immagine o i parametri (formato non supportato?): ${detail.slice(0, 200)}`;
+    message = `Fal.ai ha rifiutato lÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢immagine o i parametri (formato non supportato?): ${detail.slice(0, 200)}`;
     statusCode = 422;
   } else if (status === 429) {
     message = 'Troppe richieste a Fal.ai: attendi un momento e riprova.';
@@ -219,4 +257,4 @@ function toFriendlyError(error) {
   return friendly;
 }
 
-module.exports = { generateVideoFromImage, buildPrompt, buildNegativePrompt };
+module.exports = { generateVideoFromImage, submitVideoFromImage, checkFalVideo, buildPrompt, buildNegativePrompt };

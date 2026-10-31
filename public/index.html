@@ -72,6 +72,13 @@
       <div class="photo-tips" aria-label="Tips for choosing an image" data-i18n-aria-label="photoTipsLabel">
         <span data-i18n="tipOne">🖍️ One character works best</span><span data-i18n="tipTwo">☀️ Clear, bright image</span><span data-i18n="tipThree">🙌 Keep the whole drawing in frame</span>
       </div>
+      <aside class="upload-guide" aria-labelledby="guideTitle">
+        <span class="guide-icon" aria-hidden="true">💡</span>
+        <div class="guide-body">
+          <p class="guide-title" id="guideTitle" data-i18n="guideTitle">For a perfect result:</p>
+          <p class="guide-text"><span data-i18n="guideTextBefore">Make sure your drawing or photo has a</span> <strong data-i18n="guideTextStrong">uniform background</strong> <span data-i18n="guideTextAfter">(ideally on white paper) and is well lit. Avoid dark backgrounds, cluttered tables or strong shadows.</span></p>
+        </div>
+      </aside>
       <div class="upload-zone" id="uploadZone" role="button" tabindex="0" aria-label="Upload a drawing or photo" data-i18n-aria-label="uploadAriaLabel">
         <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp" hidden>
         <div class="upload-content" id="uploadContent">
@@ -81,7 +88,10 @@
           <small data-i18n="uploadLimit">JPG, PNG or WEBP · up to 10 MB</small>
         </div>
         <img id="imagePreview" class="preview-img hidden" alt="Preview of your selected image" data-i18n-alt="imagePreviewAlt">
-        <button type="button" id="changePhoto" class="change-photo hidden" data-i18n="changeImage">Change image</button>
+        <div class="preview-actions">
+          <button type="button" id="changePhoto" class="preview-action hidden" data-i18n="changeImage">Change image</button>
+          <button type="button" id="resetPhoto" class="preview-action hidden" data-i18n="resetImage">← Modifica ritaglio</button>
+        </div>
       </div>
     </section>
 
@@ -95,7 +105,6 @@
           <input type="range" id="cropperZoom" min="0.3" max="4" step="0.01" value="1" aria-label="Zoom" data-i18n-aria-label="cropperZoomLabel">
           <button type="button" id="cropperZoomIn" class="btn-secondary" aria-label="Zoom in" data-i18n-aria-label="cropperZoomIn">+</button>
           <button type="button" id="cropperRotate" class="btn-secondary" data-i18n="cropperRotate">⟳ Rotate 90°</button>
-          <button type="button" id="cropperReset" class="btn-secondary" data-i18n="cropperReset">Reset</button>
         </div>
         <div class="cropper-actions">
           <button type="button" id="cropperCancel" class="btn-secondary" data-i18n="cropperCancel">Cancel</button>
@@ -119,6 +128,7 @@
           <option value="claudiette" data-i18n="musicClaudiette">Reggaeton / Latin</option>
           <option value="doodle_cheerful" data-i18n="musicDoodle">Cheerful Doodle</option>
           <option value="gentle_waltz" data-i18n="musicWaltz">Baby Waltz</option>
+          <option value="christmas" data-i18n="musicChristmas">🎄 Christmas Special</option>
         </select>
       </div>
       <fieldset class="form-group aspect-group">
@@ -175,6 +185,11 @@
           <label for="cardMessage" data-i18n="cardMessageLabel">Your message</label>
           <input type="text" id="cardMessage" maxlength="60" autocomplete="off" placeholder="Happy Birthday!" data-i18n-placeholder="cardMessagePlaceholder">
         </div>
+        <fieldset class="chip-group" aria-label="Theme" data-i18n-aria-label="cardThemeLabel">
+          <legend data-i18n="cardThemeLabel">Theme</legend>
+          <label class="chip"><input type="radio" name="cardTheme" value="classic" checked><span data-i18n="cardThemeClassic">Classic</span></label>
+          <label class="chip"><input type="radio" name="cardTheme" value="christmas"><span data-i18n="cardThemeChristmas">🎄 Christmas Special</span></label>
+        </fieldset>
         <fieldset class="chip-group" aria-label="Font" data-i18n-aria-label="cardFontLabel">
           <legend data-i18n="cardFontLabel">Font</legend>
           <label class="chip chip-font-playful"><input type="radio" name="cardFont" value="playful" checked><span data-i18n="cardFontPlayful">Playful</span></label>
@@ -182,16 +197,20 @@
           <label class="chip chip-font-party"><input type="radio" name="cardFont" value="party"><span data-i18n="cardFontParty">Party</span></label>
           <label class="chip chip-font-cute"><input type="radio" name="cardFont" value="cute"><span data-i18n="cardFontCute">Cute</span></label>
         </fieldset>
-        <fieldset class="chip-group" aria-label="Frame" data-i18n-aria-label="cardTemplateLabel">
-          <legend data-i18n="cardTemplateLabel">Frame</legend>
-          <label class="chip"><input type="radio" name="cardTemplate" value="classic" checked><span data-i18n="cardTemplateClassic">Classic Clean</span></label>
-          <label class="chip"><input type="radio" name="cardTemplate" value="balloons"><span data-i18n="cardTemplateBalloons">🎈 Birthday Balloons</span></label>
-          <label class="chip"><input type="radio" name="cardTemplate" value="stars"><span data-i18n="cardTemplateStars">⭐ Christmas Stars</span></label>
-          <label class="chip"><input type="radio" name="cardTemplate" value="hearts"><span data-i18n="cardTemplateHearts">💗 Sweet Hearts</span></label>
-        </fieldset>
         <p class="card-preview-label" data-i18n="cardPreviewLabel">Live card preview</p>
-        <div id="cardPreview" class="card-preview" data-ratio="9:16" data-template="classic" data-font="playful">
-          <span class="card-deco card-deco-left" aria-hidden="true"></span><span class="card-deco card-deco-right" aria-hidden="true"></span>
+        <div id="cardPreview" class="card-preview" data-ratio="9:16" data-font="playful" data-theme="classic">
+          <div class="card-decor card-decor-christmas" aria-hidden="true">
+            <svg class="decor-garland" viewBox="0 0 1080 150" preserveAspectRatio="none"><path class="x-string" d="M46 46 Q540 114 1034 46"/><g class="x-needles"><path d="M70 50 l-14 38 M150 58 l14 36 M230 65 l-14 38 M310 70 l14 36 M390 76 l-14 38 M470 78 l14 36 M540 80 l-14 38 M620 78 l14 36 M700 76 l-14 38 M780 70 l14 36 M860 65 l-14 38 M940 58 l14 36 M1010 50 l-14 38"/></g><circle class="x-red" cx="100" cy="86" r="15"/><path class="x-gold" d="M210 80 L217 98 L236 98 L221 109 L227 127 L210 116 L193 127 L199 109 L184 98 L203 98Z"/><circle class="x-gold" cx="320" cy="108" r="15"/><circle class="x-red" cx="430" cy="114" r="15"/><path class="x-gold" d="M540 94 L547 112 L566 112 L551 123 L557 141 L540 130 L523 141 L529 123 L514 112 L533 112Z"/><circle class="x-gold" cx="650" cy="114" r="15"/><circle class="x-red" cx="760" cy="108" r="15"/><path class="x-gold" d="M870 80 L877 98 L896 98 L881 109 L887 127 L870 116 L853 127 L859 109 L844 98 L863 98Z"/><circle class="x-gold" cx="980" cy="86" r="15"/></svg>
+            <span class="xmas-orn left upper">❄</span><span class="xmas-orn left lower">❄</span>
+            <span class="xmas-orn right upper">🔴</span><span class="xmas-orn right lower">🎄</span>
+            <span class="xmas-orn spark s1">✦</span><span class="xmas-orn spark s2">❄</span><span class="xmas-orn spark s3">✦</span><span class="xmas-orn spark s4">❄</span>
+          </div>
+          <div class="card-decor card-decor-classic" aria-hidden="true">
+            <svg class="decor-bunting" viewBox="0 0 1080 150" preserveAspectRatio="none"><path class="d-string" d="M46 46 Q540 114 1034 46"/><g transform="translate(84 51) rotate(7)"><path class="d0" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(160 60) rotate(6)"><path class="d1" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(236 67) rotate(5)"><path class="d2" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(312 73) rotate(4)"><path class="d3" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(388 77) rotate(2)"><path class="d4" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(464 79) rotate(1)"><path class="d5" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(540 80) rotate(0)"><path class="d0" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(616 79) rotate(-1)"><path class="d1" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(692 77) rotate(-2)"><path class="d2" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(768 73) rotate(-4)"><path class="d3" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(844 67) rotate(-5)"><path class="d4" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(920 60) rotate(-6)"><path class="d5" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(996 51) rotate(-7)"><path class="d0" d="M-29 0 L29 0 L0 70 Z"/></g></svg>
+            <svg class="decor-confetti" viewBox="0 0 100 100" preserveAspectRatio="none"><circle class="d1" cx="7" cy="26" r="0.9"/><rect class="d2" x="9.6" y="37.5" width="2.8" height="1" transform="rotate(47 11 38)"/><path class="d3" d="M6 53.4 L6.5 54.5 L7.6 55 L6.5 55.5 L6 56.6 L5.5 55.5 L4.4 55 L5.5 54.5Z"/><path class="d0" d="M10 69.3 C8 68 9 66.6 10 67.6 C11 66.6 12 68 10 69.3Z"/><circle class="d1" cx="7" cy="82" r="0.9"/><rect class="d2" x="91.6" y="29.5" width="2.8" height="1" transform="rotate(55 93 30)"/><path class="d3" d="M89 42.4 L89.5 43.5 L90.6 44 L89.5 44.5 L89 45.6 L88.5 44.5 L87.4 44 L88.5 43.5Z"/><path class="d0" d="M94 61.3 C92 60 93 58.6 94 59.6 C95 58.6 96 60 94 61.3Z"/><circle class="d1" cx="90" cy="74" r="0.9"/></svg>
+            <span class="decor-balloon d0 left upper"></span><span class="decor-balloon d3 left lower"></span>
+            <span class="decor-balloon d4 right upper"></span><span class="decor-balloon d5 right lower"></span>
+          </div>
           <div class="card-preview-art"><img id="cardPreviewImage" alt="" class="hidden"><span id="cardPreviewEmpty" data-i18n="cardPreviewEmpty">Your drawing will appear here</span></div>
           <div class="card-preview-banner hidden" id="cardPreviewBanner"></div>
         </div>
@@ -228,6 +247,7 @@
     <h2 id="packagesHeading" data-i18n="packagesHeading">Choose your credit pack</h2>
     <p class="packages-intro" data-i18n="packagesIntro">Each credit makes one HD card from a drawing. Free retries let you regenerate the same drawing if you're not happy.</p>
     <div id="packagesGrid" class="packages-grid" role="list"></div>
+    <p class="packages-notice" data-i18n="packagesNotice"><span aria-hidden="true">💡</span> Note: to ensure the best animation quality, the system works best with images made on a white or uniform background.</p>
     <p id="packagesStatus" class="status" role="status" aria-live="polite"></p>
     <p class="packages-note" data-i18n="packagesNote">One-time payment, no subscription. Secure checkout by LemonSqueezy.</p>
     <form method="dialog" class="modal-actions"><button type="submit" id="btnPackagesCancel" class="btn-secondary" data-i18n="checkoutCancel">← Back to Home / Cancel</button></form>

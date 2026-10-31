@@ -2,7 +2,7 @@ process.env.POSTGRES_URL = '';
 process.env.DATABASE_URL = '';
 process.env.POSTGRES_URL_NON_POOLING = '';
 process.env.FAL_KEY = 'fal_test_dummy';
-process.env.VERCEL = '1'; // synchronous path: the provider answer is available inside the request
+process.env.VERCEL = '1'; // queued path: the request only submits the job, status polls finish it
 process.env.NODE_ENV = 'test';
 
 const test = require('node:test');
@@ -11,12 +11,13 @@ const crypto = require('node:crypto');
 const path = require('node:path');
 
 // Stub the provider, the image upload and the renderer so only the credit logic is exercised.
-let falBehaviour = async () => 'https://fal.example/video.mp4';
+let submitBehaviour = async () => ({ requestId: 'req-1', modelId: 'fal-ai/test' });
+let checkBehaviour = async () => ({ done: true, url: 'https://fal.example/video.mp4' });
 const stub = (file, exports) => {
   const resolved = require.resolve(path.join('..', 'api', '_lib', file));
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
 };
-stub('fal-video.js', { generateVideoFromImage: (...args) => falBehaviour(...args), buildPrompt: () => 'prompt' });
+stub('fal-video.js', { submitVideoFromImage: (...args) => submitBehaviour(...args), checkFalVideo: (...args) => checkBehaviour(...args), buildPrompt: () => 'prompt' });
 stub('image-upload.js', {
   saveImageAsPublicUrl: async () => 'https://img.example/x.png',
   prepareImage: async (_dataUrl, _aspectRatio, background) => ({ url: 'https://img.example/x.png', background: background || 'original' })
@@ -24,7 +25,7 @@ stub('image-upload.js', {
 stub('video-loop.js', { renderLoopVideo: async () => '/tmp/x.mp4', addAudioTrack: async () => '/tmp/x-audio.mp4', OUTPUT_DIRECTORY: '/tmp' });
 
 const store = require('../api/_lib/store.js');
-const { createDance } = require('../api/_lib/kling.js');
+const { createDance, getDanceStatus } = require('../api/_lib/kling.js');
 
 const IMAGE = 'data:image/png;base64,iVBORw0KGgo=';
 async function fundedWallet(main = 1, retry = 0) {
@@ -34,61 +35,53 @@ async function fundedWallet(main = 1, retry = 0) {
 }
 const generate = (walletId) => createDance({ walletId, imageUrl: IMAGE, motionPreset: 'disco70' }, '127.0.0.1');
 
-test('provider error: no credit is charged and the user gets a clear message', async () => {
+test('the request answers at once with PENDING and spends no credit', async () => {
   const walletId = await fundedWallet(1);
-  falBehaviour = async () => { const error = new Error('Fal.ai ha risposto con un errore.'); error.statusCode = 502; throw error; };
-  await assert.rejects(generate(walletId), (error) => error.statusCode === 502 && /No credit was charged/.test(error.message));
-  assert.deepEqual(await store.walletGet(walletId), { mainCredits: 1, retryCredits: 0 });
-});
-
-test('provider timeout: no credit is charged', async () => {
-  const walletId = await fundedWallet(1);
-  falBehaviour = async () => { const error = new Error('timeout'); error.name = 'TimeoutError'; throw error; };
-  await assert.rejects(generate(walletId), /No credit was charged/);
-  assert.deepEqual(await store.walletGet(walletId), { mainCredits: 1, retryCredits: 0 });
-});
-
-test('empty provider answer: no credit is charged', async () => {
-  const walletId = await fundedWallet(1);
-  falBehaviour = async () => '';
-  await assert.rejects(generate(walletId), { code: 'GENERATION_FAILED' });
-  assert.deepEqual(await store.walletGet(walletId), { mainCredits: 1, retryCredits: 0 });
-});
-
-test('success: the credit is charged exactly once, after the video URL is returned', async () => {
-  const walletId = await fundedWallet(2);
-  let balanceDuringCall;
-  falBehaviour = async () => { balanceDuringCall = await store.walletGet(walletId); return 'https://fal.example/video.mp4'; };
   const result = await generate(walletId);
-  assert.equal(result.status, 'COMPLETE');
-  assert.deepEqual(balanceDuringCall, { mainCredits: 2, retryCredits: 0 });
+  assert.equal(result.status, 'PENDING');
+  assert.equal(result.canPoll, true);
   assert.deepEqual(await store.walletGet(walletId), { mainCredits: 1, retryCredits: 0 });
+});
+
+test('submit error: no credit is charged and the user gets a clear message', async () => {
+  const walletId = await fundedWallet(1);
+  submitBehaviour = async () => { const error = new Error('Fal.ai ha risposto con un errore.'); error.statusCode = 502; throw error; };
+  await assert.rejects(generate(walletId), { statusCode: 502 });
+  submitBehaviour = async () => ({ requestId: 'req-1', modelId: 'fal-ai/test' });
+  assert.deepEqual(await store.walletGet(walletId), { mainCredits: 1, retryCredits: 0 });
+});
+
+test('polling: still processing stays PENDING, then COMPLETE and the credit is charged once', async () => {
+  const walletId = await fundedWallet(2);
+  const { generationToken } = await generate(walletId);
+  checkBehaviour = async () => ({ done: false, status: 'IN_PROGRESS' });
+  assert.equal((await getDanceStatus(generationToken)).status, 'PENDING');
+  assert.deepEqual(await store.walletGet(walletId), { mainCredits: 2, retryCredits: 0 });
+  checkBehaviour = async () => ({ done: true, url: 'https://fal.example/video.mp4' });
+  const done = await getDanceStatus(generationToken);
+  assert.equal(done.status, 'COMPLETE');
+  assert.deepEqual(await store.walletGet(walletId), { mainCredits: 1, retryCredits: 0 });
+  assert.equal((await getDanceStatus(generationToken)).status, 'COMPLETE');
+  assert.deepEqual(await store.walletGet(walletId), { mainCredits: 1, retryCredits: 0 });
+});
+
+test('provider failure while polling: ERROR, no credit charged, a new generation can start', async () => {
+  const walletId = await fundedWallet(1);
+  const { generationToken } = await generate(walletId);
+  checkBehaviour = async () => { throw new Error('boom'); };
+  const failed = await getDanceStatus(generationToken);
+  assert.equal(failed.status, 'ERROR');
+  assert.deepEqual(await store.walletGet(walletId), { mainCredits: 1, retryCredits: 0 });
+  checkBehaviour = async () => ({ done: true, url: 'https://fal.example/video.mp4' });
+  const next = await generate(walletId);
+  assert.equal((await getDanceStatus(next.generationToken)).status, 'COMPLETE');
+  assert.deepEqual(await store.walletGet(walletId), { mainCredits: 0, retryCredits: 0 });
 });
 
 test('no credits: rejected before calling the provider', async () => {
   const walletId = await fundedWallet(0);
   let called = false;
-  falBehaviour = async () => { called = true; return 'https://fal.example/video.mp4'; };
+  submitBehaviour = async () => { called = true; return { requestId: 'x', modelId: 'y' }; };
   await assert.rejects(generate(walletId), { code: 'NO_CREDITS' });
   assert.equal(called, false);
-});
-
-test('concurrent requests on one credit: a single generation runs and a single credit is spent', async () => {
-  const walletId = await fundedWallet(1);
-  let calls = 0;
-  falBehaviour = async () => { calls += 1; await new Promise((resolve) => setTimeout(resolve, 50)); return 'https://fal.example/video.mp4'; };
-  const outcomes = await Promise.allSettled([generate(walletId), generate(walletId)]);
-  assert.equal(outcomes.filter((o) => o.status === 'fulfilled').length, 1);
-  assert.equal(outcomes.find((o) => o.status === 'rejected').reason.code, 'GENERATION_IN_PROGRESS');
-  assert.equal(calls, 1);
-  assert.deepEqual(await store.walletGet(walletId), { mainCredits: 0, retryCredits: 0 });
-});
-
-test('the wallet lock is released after a failure so the user can retry', async () => {
-  const walletId = await fundedWallet(1);
-  falBehaviour = async () => { throw new Error('boom'); };
-  await assert.rejects(generate(walletId));
-  falBehaviour = async () => 'https://fal.example/video.mp4';
-  assert.equal((await generate(walletId)).status, 'COMPLETE');
-  assert.deepEqual(await store.walletGet(walletId), { mainCredits: 0, retryCredits: 0 });
 });

@@ -77,6 +77,11 @@ button { touch-action: manipulation; }
 .photo-tips span { padding: 7px 11px; border-radius: 99px; background: #fff7e8; color: #725c48; font-size: 0.82rem; }
 .photo-tips span:nth-child(2) { background: #e9f8fc; }
 .photo-tips span:nth-child(3) { background: #fff0f3; }
+.upload-guide { display: flex; gap: 12px; margin: 0 0 14px; padding: 14px 16px; border: 1px solid #f6dd8f; border-left: 5px solid #f5b82e; border-radius: 16px; background: #fff8dc; }
+.guide-icon { flex: none; display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; background: #ffeaa0; font-size: 1rem; }
+.guide-body { min-width: 0; }
+.guide-title { margin: 0 0 4px; font-weight: 700; font-size: 1rem; }
+.guide-text { margin: 0; font-size: 0.9rem; line-height: 1.45; color: #5d4a38; }
 
 .upload-zone {
   position: relative;
@@ -99,7 +104,8 @@ button { touch-action: manipulation; }
 .upload-content u { color: var(--coral); }
 .upload-content small { display: block; margin-top: 10px; color: #a29aa6; }
 .preview-img { max-width: 100%; max-height: 280px; border-radius: 14px; object-fit: contain; }
-.change-photo { position: absolute; right: 12px; bottom: 12px; padding: 8px 12px; border: 0; border-radius: 99px; background: #fff; color: var(--ink); box-shadow: 0 2px 10px #42364d25; cursor: pointer; }
+.preview-actions { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 8px; }
+.preview-action { padding: 8px 12px; border: 0; border-radius: 99px; background: #fff; color: var(--ink); box-shadow: 0 2px 10px #42364d25; cursor: pointer; }
 
 .form-group { margin-top: 21px; }
 .form-group label { display: block; margin-bottom: 8px; font-weight: 600; }
@@ -263,27 +269,62 @@ button:focus-visible, a:focus-visible { outline: 3px solid #69c9e880; outline-of
 .chip-font-cute { font-family: 'Patrick Hand', cursive; font-size: 1.1rem; }
 .card-preview-label { margin: 6px 0 8px; color: var(--muted); font-size: 0.9rem; }
 
-.card-preview { --card-border: #ff5e7e; --card-inner: #ffc457; --card-text: #3b2f4a; position: relative; display: flex; flex-direction: column; width: min(100%, 300px); margin: 0 auto; overflow: hidden; container-type: inline-size; background: #fff; border: 2.4cqw solid var(--card-border); border-radius: 2px; aspect-ratio: 9 / 16; }
+.card-preview { --card-text: #c8326c; --paper: #fbf6ea; position: relative; display: flex; flex-direction: column; width: min(100%, 300px); margin: 0 auto; overflow: hidden; container-type: inline-size; background-color: var(--paper); background-image: radial-gradient(circle at 18% 14%, rgba(205, 178, 130, 0.2), transparent 45%), radial-gradient(circle at 82% 72%, rgba(205, 178, 130, 0.18), transparent 50%), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .35 0 0 0 0 .25 .55 0 0 0 -.2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E"); border-radius: 2px; aspect-ratio: 9 / 16; }
 .card-preview[data-ratio="1:1"] { aspect-ratio: 1 / 1; }
-.card-preview::before { content: ''; position: absolute; inset: 0.9cqw; border: 0.55cqw solid var(--card-inner); border-radius: 2.6cqw; pointer-events: none; z-index: 2; }
-.card-preview[data-template="balloons"] { --card-border: #4299e1; --card-inner: #fff; --card-text: #2b6cb0; }
-.card-preview[data-template="stars"] { --card-border: #c62d42; --card-inner: #2f8f5b; --card-text: #9e1c30; }
-.card-preview[data-template="hearts"] { --card-border: #ff7fa8; --card-inner: #fff; --card-text: #c8326c; }
-.card-preview-art { position: relative; display: grid; flex: 1 1 0; min-height: 0; place-items: center; color: #b4abb6; font-size: 4cqw; text-align: center; }
-.card-preview-art img { max-width: 100%; max-height: 100%; object-fit: contain; }
-.card-preview-banner { position: relative; z-index: 3; margin: 0 3.5cqw 4cqw; padding: 2.2cqw 2cqw; border: 0.5cqw solid var(--card-border); border-radius: 3.4cqw; background: #ffffffF5; color: var(--card-text); text-align: center; }
-.card-preview-banner span { display: block; white-space: nowrap; -webkit-text-stroke: 0.15cqw var(--card-text); }
+.card-decor { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.card-decor .d0 { --deco: #e53935; }
+.card-decor .d1 { --deco: #fdc028; }
+.card-decor .d2 { --deco: #43a047; }
+.card-decor .d3 { --deco: #1e88e5; }
+.card-decor .d4 { --deco: #ec64a0; }
+.card-decor .d5 { --deco: #fb8c00; }
+.card-decor svg { position: absolute; left: 0; width: 100%; }
+.card-decor svg [class^="d"] { fill: var(--deco); stroke: var(--deco); stroke-width: 4; stroke-linejoin: round; }
+.card-decor svg .d-string { fill: none; stroke: var(--card-text); stroke-width: 3; }
+.decor-bunting { top: 0; height: 13.9cqw; }
+.decor-confetti { top: 0; height: 100%; }
+.card-decor .decor-confetti [class^="d"] { stroke-width: 0; }
+.decor-balloon { position: absolute; width: 8.5cqw; height: 10.6cqw; border-radius: 50% 50% 50% 50% / 45% 45% 55% 55%; background: var(--deco); }
+.decor-balloon::before { content: ''; position: absolute; top: 14%; left: 20%; width: 22%; height: 28%; border-radius: 50%; background: rgba(255, 255, 255, 0.45); }
+.decor-balloon::after { content: ''; position: absolute; top: 100%; left: 50%; width: 0.3cqw; height: 12cqw; background: #9a8f86; }
+.decor-balloon.left { left: 1.6cqw; }
+.decor-balloon.right { right: 1.6cqw; }
+.decor-balloon.upper { top: 34%; }
+.decor-balloon.lower { top: 60%; }
+.card-preview[data-theme="christmas"] { --card-text: #b71c1c; }
+.card-decor-christmas { display: none; }
+.card-preview[data-theme="christmas"] .card-decor-christmas { display: block; }
+.card-preview[data-theme="christmas"] .card-decor-classic { display: none; }
+.decor-garland { top: 0; height: 13.9cqw; }
+.decor-garland .x-string { fill: none; stroke: #266f3e; stroke-width: 10; stroke-linecap: round; }
+.decor-garland .x-needles path { fill: none; stroke: #2f8a4f; stroke-width: 9; stroke-linecap: round; }
+.decor-garland .x-red { fill: #be1e2d; }
+.decor-garland .x-gold { fill: #e2a824; }
+.xmas-orn { position: absolute; font-size: 5.2cqw; line-height: 1; color: #78aacd; }
+.xmas-orn.left { left: 1.8cqw; }
+.xmas-orn.right { right: 1.8cqw; }
+.xmas-orn.upper { top: 34%; }
+.xmas-orn.lower { top: 60%; }
+.xmas-orn.spark { font-size: 2.6cqw; color: #e2a824; }
+.xmas-orn.spark.s2, .xmas-orn.spark.s4 { color: #78aacd; }
+.xmas-orn.s1 { left: 2cqw; top: 80%; }
+.xmas-orn.s2 { right: 2cqw; top: 46%; }
+.xmas-orn.s3 { right: 2.5cqw; top: 82%; }
+.xmas-orn.s4 { left: 2.5cqw; top: 48%; }
+.card-preview-art { position: relative; z-index: 1; display: grid; box-sizing: border-box; flex: 1 1 0; min-height: 0; padding: 19cqw 14cqw 4cqw; place-items: center; color: #b4abb6; font-size: 4cqw; text-align: center; }
+.card-preview-art img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 1cqw; box-shadow: 0 0 0 1.1cqw var(--paper), 0 0 0 1.35cqw var(--card-text), 0 0 0 2.4cqw var(--paper), 0 0 0 2.6cqw var(--card-text); }
+.card-preview-banner { position: relative; z-index: 3; min-width: 0; box-sizing: border-box; margin: 0 8cqw 8.5cqw; padding: 1cqw 0; background: transparent; color: var(--card-text); text-align: center; }
+.card-preview-banner span { display: block; min-width: 0; white-space: normal; overflow-wrap: anywhere; -webkit-text-stroke: 0.15cqw var(--card-text); }
 .card-preview[data-font="playful"] .card-preview-banner { font-family: 'Fredoka', sans-serif; }
 .card-preview[data-font="handwritten"] .card-preview-banner { font-family: 'Caveat', cursive; }
 .card-preview[data-font="party"] .card-preview-banner { font-family: 'Baloo 2', sans-serif; }
 .card-preview[data-font="cute"] .card-preview-banner { font-family: 'Patrick Hand', cursive; }
-.card-deco { position: absolute; top: 3cqw; z-index: 3; font-size: 11cqw; line-height: 1; pointer-events: none; }
-.card-deco-left { left: 4cqw; }
-.card-deco-right { right: 4cqw; }
-.card-preview[data-template="balloons"] .card-deco::before { content: '🎈🎈'; }
-.card-preview[data-template="stars"] .card-deco::before { content: '⭐'; }
-.card-preview[data-template="hearts"] .card-deco::before { content: '💗'; }
-.card-preview[data-template="classic"] .card-deco::before { content: '•'; color: #ffc457; font-size: 4cqw; }
+/* Christmas (9:16): the printed template PNG is the background; the artwork sits in its window and the message below it. */
+.card-preview[data-theme="christmas"]:not([data-ratio="1:1"]) { background: url("/sfondi/christmas-frame.png") center / 100% 100% no-repeat; }
+.card-preview[data-theme="christmas"]:not([data-ratio="1:1"]) .card-decor { display: none; }
+.card-preview[data-theme="christmas"]:not([data-ratio="1:1"]) .card-preview-art { position: absolute; left: 14.8%; top: 26.8%; width: 70.5%; height: 53.2%; flex: none; padding: 0; background: var(--paper); }
+.card-preview[data-theme="christmas"]:not([data-ratio="1:1"]) .card-preview-art img { width: 100%; height: 100%; max-width: none; max-height: none; object-fit: cover; border-radius: 0; box-shadow: none; }
+.card-preview[data-theme="christmas"]:not([data-ratio="1:1"]) .card-preview-banner { position: absolute; left: 15%; right: 15%; top: 80.8%; height: 13.2%; margin: 0; padding: 0; display: flex; align-items: center; justify-content: center; }
 .cropper-modal { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 12px; background: rgba(40, 30, 50, 0.7); }
 .cropper-box { display: flex; flex-direction: column; gap: 10px; width: min(100%, 460px); max-height: 100%; overflow: auto; padding: 16px; background: #fff; border-radius: 18px; box-shadow: var(--shadow); }
 .cropper-box h3 { margin: 0; }
@@ -314,3 +355,4 @@ body.cropper-open { overflow: hidden; }
 .modal-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin: 16px 0 0; }
 .retry-modal { max-width: 440px; text-align: center; }
 .btn-secondary:disabled { opacity: 0.6; cursor: not-allowed; }
+.packages-notice { margin: 14px 0 0; padding: 10px 14px; border: 1px solid #f6dd8f; border-radius: 12px; background: #fff8dc; color: #5d4a38; font-size: 0.88rem; line-height: 1.4; text-align: center; }

@@ -8,7 +8,6 @@ const zoomRange = document.getElementById('cropperZoom');
 const btnZoomIn = document.getElementById('cropperZoomIn');
 const btnZoomOut = document.getElementById('cropperZoomOut');
 const btnRotate = document.getElementById('cropperRotate');
-const btnReset = document.getElementById('cropperReset');
 const btnConfirm = document.getElementById('cropperConfirm');
 const btnCancel = document.getElementById('cropperCancel');
 
@@ -21,12 +20,12 @@ function ratioSize(ratio, longSide) {
 }
 
 // Draws the image into `target` using the current pan/zoom/rotation; offsets are expressed relative to the preview size.
-function draw(target, previewWidth) {
+function draw(target, previewWidth, transform = state) {
   const context = target.getContext('2d');
   const k = target.width / previewWidth;
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, target.width, target.height);
-  const { image, rotation, zoom, offsetX, offsetY } = state;
+  const { image, rotation, zoom, offsetX, offsetY } = transform;
   const rotated = rotation % 180 !== 0;
   const imageWidth = rotated ? image.naturalHeight : image.naturalWidth;
   const imageHeight = rotated ? image.naturalWidth : image.naturalHeight;
@@ -46,11 +45,6 @@ function render() {
 
 function setZoom(value) {
   state.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
-  render();
-}
-
-function resetTransform() {
-  Object.assign(state, { rotation: 0, zoom: 1, offsetX: 0, offsetY: 0 });
   render();
 }
 
@@ -97,7 +91,6 @@ btnRotate.addEventListener('click', () => {
   state.rotation = (state.rotation + 90) % 360;
   render();
 });
-btnReset.addEventListener('click', () => state && resetTransform());
 btnCancel.addEventListener('click', () => state && close(null));
 modal.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && state) close(null);
