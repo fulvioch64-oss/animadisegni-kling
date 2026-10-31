@@ -186,6 +186,6 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error('PORT deve essere un numero valido compreso tra 1 e 65535.');
 }
 
-server.listen(port, '127.0.0.1', () => {
+server.listen(port, '0.0.0.0', () => {
   console.log(`AnimaDisegni disponibile su http://127.0.0.1:${port}`);
 });
