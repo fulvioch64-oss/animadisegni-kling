@@ -2,3 +2,4 @@
 .vercel
 .generated-videos/
 .env*
+scripts/
