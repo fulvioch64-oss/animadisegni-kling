@@ -272,7 +272,9 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
   const validatedImage = validateImageUrl(rawImageUrl);
   const imageHash = hashImage(validatedImage);
   // `background` is the scene really applied: it falls back to 'original' if the replacement failed.
+  console.info('[generate] 1/3 preparing the image (background: ' + (rawBackground || 'original') + ').');
   const { url: imageUrl, background } = await prepareImage(validatedImage, aspectRatio, rawBackground);
+  console.info('[generate] 2/3 image ready for Kling: ' + imageUrl);
   const motionPreset = validateMotionPreset(rawMotionPreset);
   const useFal = Boolean(process.env.FAL_KEY);
   const { endpoint, apiKey } = useFal ? {} : getKlingConfig();
@@ -322,6 +324,7 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
   if (useFal) {
     // The job is queued on Fal.ai and finished by the status polls: no request stays open and a restart does not lose it.
     const queued = await submitVideoFromImage(imageUrl, motionPreset, { aspectRatio, renderStyle: rawRenderStyle, background, theme: christmas ? 'christmas' : 'classic' });
+    console.info('[generate] 3/3 job queued on Fal.ai: ' + queued.modelId + ' request ' + queued.requestId);
     await saveVideo(generationToken, { falRequestId: queued.requestId, falModelId: queued.modelId, falSubmittedAt: Date.now(), generationStatus: 'GENERATING' });
     return { generationToken, taskId: null, status: 'PENDING', canPoll: true };
   }
