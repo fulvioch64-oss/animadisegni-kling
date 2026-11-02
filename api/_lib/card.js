@@ -75,14 +75,15 @@ async function layoutCard(card, { width, height }) {
     : 0;
   const lineHeight = Math.round(fontSize * 1.18);
   const bannerHeight = lines.length ? lines.length * lineHeight + 24 : 0;
-  const bannerBottomMargin = 84;
+  const bannerBottomMargin = 56;
   const bannerTop = height - bannerBottomMargin - bannerHeight;
-  const topZone = Math.round(Math.min(width, height) * 0.15);
-  // Room kept around the artwork window for its double keyline (RING_EXTENT) and breathing space.
-  const regionTop = topZone + 30;
-  const regionBottom = (lines.length ? bannerTop - 8 : height - 26 - 110) - 22;
+  // Slim strip at the top for the small bunting.
+  const topZone = Math.round(Math.min(width, height) * 0.09);
+  // Room kept around the artwork window for its keyline (RING_GAP) and breathing space.
+  const regionTop = topZone + 16;
+  const regionBottom = (lines.length ? bannerTop : height - 18) - 22;
   const regionHeight = regionBottom - regionTop;
-  const windowHeight = Math.max(2, Math.floor(Math.min(regionHeight, ((width - 200) * height) / width)));
+  const windowHeight = Math.max(2, Math.floor(Math.min(regionHeight, ((width - 96) * height) / width)));
   const windowWidth = Math.floor((windowHeight * width) / height);
   const windowBox = {
     x: Math.round((width - windowWidth) / 2),

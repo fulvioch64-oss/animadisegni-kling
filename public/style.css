@@ -281,19 +281,10 @@ button:focus-visible, a:focus-visible { outline: 3px solid #69c9e880; outline-of
 .card-decor svg { position: absolute; left: 0; width: 100%; }
 .card-decor svg [class^="d"] { fill: var(--deco); stroke: var(--deco); stroke-width: 4; stroke-linejoin: round; }
 .card-decor svg .d-string { fill: none; stroke: var(--card-text); stroke-width: 3; }
-.decor-bunting { top: 0; height: 13.9cqw; }
-.decor-confetti { top: 0; height: 100%; }
-.card-decor .decor-confetti [class^="d"] { stroke-width: 0; }
-.decor-balloon { position: absolute; width: 8.5cqw; height: 10.6cqw; border-radius: 50% 50% 50% 50% / 45% 45% 55% 55%; background: var(--deco); }
-.decor-balloon::before { content: ''; position: absolute; top: 14%; left: 20%; width: 22%; height: 28%; border-radius: 50%; background: rgba(255, 255, 255, 0.45); }
-.decor-balloon::after { content: ''; position: absolute; top: 100%; left: 50%; width: 0.3cqw; height: 12cqw; background: #9a8f86; }
-.decor-balloon.left { left: 1.6cqw; }
-.decor-balloon.right { right: 1.6cqw; }
-.decor-balloon.upper { top: 34%; }
-.decor-balloon.lower { top: 60%; }
-.card-preview-art { position: relative; z-index: 1; display: grid; box-sizing: border-box; flex: 1 1 0; min-height: 0; padding: 19cqw 14cqw 4cqw; place-items: center; color: #b4abb6; font-size: 4cqw; text-align: center; }
-.card-preview-art img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 1cqw; box-shadow: 0 0 0 1.1cqw var(--paper), 0 0 0 1.35cqw var(--card-text), 0 0 0 2.4cqw var(--paper), 0 0 0 2.6cqw var(--card-text); }
-.card-preview-banner { position: relative; z-index: 3; min-width: 0; box-sizing: border-box; margin: 0 8cqw 8.5cqw; padding: 1cqw 0; background: transparent; color: var(--card-text); text-align: center; }
+.decor-bunting { top: 0; height: 9.3cqw; }
+.card-preview-art { position: relative; z-index: 1; display: grid; box-sizing: border-box; flex: 1 1 0; min-height: 0; padding: 10.5cqw 4.4cqw 2cqw; place-items: center; color: #b4abb6; font-size: 4cqw; text-align: center; }
+.card-preview-art img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 1cqw; box-shadow: 0 0 0 0.93cqw var(--paper), 0 0 0 1.25cqw var(--card-text); }
+.card-preview-banner { position: relative; z-index: 3; min-width: 0; box-sizing: border-box; margin: 0 8cqw 5.2cqw; padding: 1.1cqw 0; background: transparent; color: var(--card-text); text-align: center; }
 .card-preview-banner span { display: block; min-width: 0; white-space: normal; overflow-wrap: anywhere; -webkit-text-stroke: 0.15cqw var(--card-text); }
 .card-preview[data-font="playful"] .card-preview-banner { font-family: 'Fredoka', sans-serif; }
 .card-preview[data-font="handwritten"] .card-preview-banner { font-family: 'Caveat', cursive; }
