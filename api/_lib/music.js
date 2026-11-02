@@ -7,6 +7,7 @@ const AUDIO_DIRECTORY = path.resolve(__dirname, '..', '..', 'public', 'audio');
 const MUSIC_TRACKS = {
   disco70: 'Disco70.mp3',
   claudiette: 'Claudiette.MP3',
+  latin: 'Tropical-Reaggeton.mp3',
   doodle_cheerful: 'doodle cheerful.mp3',
   gentle_waltz: 'A Gentle Waltz.mp3',
   // Christmas Special soundtrack, selectable manually in the music menu.

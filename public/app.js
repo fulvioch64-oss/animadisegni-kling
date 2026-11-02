@@ -73,7 +73,12 @@ downloadVideo.addEventListener('click', async () => {
   }
 });
 const motionPreset = document.getElementById('motionPreset');
-const aspectInputs = [...document.querySelectorAll('input[name="aspectRatio"]')];
+const musicInputs = [...document.querySelectorAll('input[name="musicTrack"]')];
+const syncMusicCards = () => musicInputs.forEach((input) => { input.checked = input.value === motionPreset.value; });
+musicInputs.forEach((input) => input.addEventListener('change', () => {
+  motionPreset.value = input.value;
+  motionPreset.dispatchEvent(new Event('change'));
+}));const aspectInputs = [...document.querySelectorAll('input[name="aspectRatio"]')];
 const renderStyleInputs = [...document.querySelectorAll('input[name="renderStyle"]')];
 const selectedRenderStyle = () => renderStyleInputs.find((input) => input.checked)?.value || 'real_photo';
 const backgroundInputs = [...document.querySelectorAll('input[name="background"]')];
@@ -422,6 +427,7 @@ backgroundInputs.forEach((input) => input.addEventListener('change', () => {
   const christmasTrack = [...motionPreset.options].some((option) => option.value === 'christmas');
   if (selectedBackground() === 'christmas_special' && !musicChosenManually && christmasTrack) {
     motionPreset.value = 'christmas';
+    syncMusicCards();
   }
 }));
 backgroundInputs.forEach((input) => input.addEventListener('change', saveCustomization));
@@ -585,6 +591,7 @@ function restoreCustomization() {
     if (typeof customization.motionPreset === 'string'
       && [...motionPreset.options].some((option) => option.value === customization.motionPreset)) {
       motionPreset.value = customization.motionPreset;
+      syncMusicCards();
     }
     musicChosenManually = customization.musicChosenManually === true;
     const savedAspect =  aspectInputs.find((input) => input.value === customization.aspectRatio);

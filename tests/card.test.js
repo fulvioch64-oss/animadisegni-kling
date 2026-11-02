@@ -23,8 +23,8 @@ test('card layout fits long unbroken messages for every font and aspect ratio', 
       assert.ok(layout.bannerHeight < size.height);
       assert.ok(layout.areaHeight > 0);
       const { window: box } = layout;
-      assert.ok(box.x >= 26 && box.x + box.width <= size.width - 26);
-      assert.ok(box.y >= layout.topZone && box.y + box.height <= layout.bannerTop);
+      assert.ok(box.x >= 10 && box.x + box.width <= size.width - 10);
+      assert.ok(box.y >= 12 && box.y + box.height <= layout.bannerTop - 12);
       assert.equal(box.height, layout.areaHeight);
     }
   }
@@ -37,19 +37,25 @@ test('blank or missing messages produce no text lines, padded messages are trimm
   assert.deepEqual((await layoutCard({ message: '  Ciao  ', font: 'playful' }, size)).lines, ['Ciao']);
 });
 
-test('frame is full-bleed textured paper with no colored outer border', async () => {
+test('frame has a clean bright background, delicate artwork border, and transparent artwork window', async () => {
   const sharp = require('sharp');
-  const { buildFrameImage, PAPER_COLOR } = require('../api/_lib/card-frame.js');
+  const { buildFrameImage, PAPER_COLOR, FRAME_COLOR } = require('../api/_lib/card-frame.js');
   const { normalizeCard } = require('../api/_lib/card.js');
   const size = { width: 1080, height: 1920 };
   const layout = await layoutCard({ message: 'Ciao', font: 'playful' }, size);
   const { data, info } = await sharp(await buildFrameImage(layout)).raw().toBuffer({ resolveWithObject: true });
   assert.equal(info.width, 1080);
   assert.equal(info.height, 1920);
-  for (const [x, y] of [[0, 0], [5, 500], [1074, 900], [540, 1915]]) {
+  for (const [x, y] of [[0, 0], [5, 500], [1074, 900]]) {
     const offset = (y * info.width + x) * info.channels;
-    PAPER_COLOR.forEach((value, i) => assert.ok(Math.abs(data[offset + i] - value) < 45, `edge pixel ${x},${y}`));
+    PAPER_COLOR.forEach((value, i) => assert.equal(data[offset + i], value, `background pixel ${x},${y}`));
   }
+  const windowOffset = (layout.window.y * info.width + layout.window.x) * info.channels;
+  assert.equal(data[windowOffset + 3], 0);
+  const frameOffset = (layout.window.y * info.width + layout.window.x - 5) * info.channels;
+  FRAME_COLOR.forEach((value, i) => assert.ok(Math.abs(data[frameOffset + i] - value) <= 1));
+  const bandOffset = (layout.bannerTop * info.width) * info.channels;
+  assert.deepEqual(Array.from(data.subarray(bandOffset, bandOffset + 3)), [255, 248, 248]);
   assert.deepEqual(normalizeCard({ message: 'Ciao', borderColor: 'red' }), { message: 'Ciao', font: 'playful' });
   assert.equal(normalizeCard({ borderColor: 'red' }), null);
 });

@@ -58,11 +58,6 @@
         <button type="button" class="demo-sound" aria-pressed="false" data-i18n="demoSoundOn">🔇 Turn sound on</button>
         <figcaption data-i18n="demoRealCaption">Style: Real Draw / Real Person</figcaption>
       </figure>
-      <figure class="demo-figure">
-        <video class="demo-video" src="./demo/nonno-dance.mp4" autoplay loop muted playsinline preload="metadata" aria-label="Video from a real person's photo" data-i18n-aria-label="demoGrandpaAriaLabel"></video>
-        <button type="button" class="demo-sound" aria-pressed="false" data-i18n="demoSoundOn">🔇 Turn sound on</button>
-        <figcaption data-i18n="demoGrandpaCaption">Example with a real person (photo)</figcaption>
-      </figure>
     </div>
   </section>
 
@@ -121,16 +116,56 @@
         <button type="button" id="btnBuyCredits" class="btn-secondary credits-buy" data-i18n="buyCredits">Buy credits</button>
       </div>
               <p class="credit-rule" data-i18n="creditRule">1 credit = 1 HD Card</p>
-      <div class="form-group">
-        <label for="motionPreset" data-i18n="styleMusicLabel">Style & music</label>
-        <select id="motionPreset">
+      <fieldset class="form-group music-group">
+        <legend data-i18n="styleMusicLabel">Style & music</legend>
+        <div class="music-grid">
+          <label class="music-card music-pink">
+            <input type="radio" name="musicTrack" value="disco70" checked>
+            <span class="music-icon" aria-hidden="true">🪩</span>
+            <span class="music-name" data-i18n="musicDisco70">Classic Disco 70's</span>
+            <svg class="music-check" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12"/><path d="M6.5 12.5l4 4 7-8.5"/></svg>
+          </label>
+          <label class="music-card music-teal">
+            <input type="radio" name="musicTrack" value="claudiette">
+            <span class="music-icon" aria-hidden="true">💃</span>
+            <span class="music-name" data-i18n="musicReggaeton">Reggaeton</span>
+            <svg class="music-check" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12"/><path d="M6.5 12.5l4 4 7-8.5"/></svg>
+          </label>
+          <label class="music-card music-orange">
+            <input type="radio" name="musicTrack" value="latin">
+            <span class="music-icon" aria-hidden="true">🌴</span>
+            <span class="music-name" data-i18n="musicLatin">Latin</span>
+            <svg class="music-check" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12"/><path d="M6.5 12.5l4 4 7-8.5"/></svg>
+          </label>
+          <label class="music-card music-yellow">
+            <input type="radio" name="musicTrack" value="doodle_cheerful">
+            <span class="music-icon" aria-hidden="true">🎈</span>
+            <span class="music-name" data-i18n="musicDoodle">Cheerful Doodle</span>
+            <svg class="music-check" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12"/><path d="M6.5 12.5l4 4 7-8.5"/></svg>
+          </label>
+          <label class="music-card music-lilac">
+            <input type="radio" name="musicTrack" value="gentle_waltz">
+            <span class="music-icon" aria-hidden="true">🌙</span>
+            <span class="music-name" data-i18n="musicWaltz">Baby Waltz</span>
+            <svg class="music-check" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12"/><path d="M6.5 12.5l4 4 7-8.5"/></svg>
+          </label>
+          <label class="music-card music-mint">
+            <input type="radio" name="musicTrack" value="christmas">
+            <span class="music-icon" aria-hidden="true">❄️</span>
+            <span class="music-name" data-i18n="musicChristmas">🎄 Christmas Special</span>
+            <svg class="music-check" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12"/><path d="M6.5 12.5l4 4 7-8.5"/></svg>
+          </label>
+        </div>
+        <!-- Source of truth for the existing JS; the cards above drive it. -->
+        <select id="motionPreset" hidden>
           <option value="disco70" data-i18n="musicDisco70" selected>Classic Disco 70's</option>
-          <option value="claudiette" data-i18n="musicClaudiette">Reggaeton / Latin</option>
+          <option value="claudiette" data-i18n="musicReggaeton">Reggaeton</option>
+          <option value="latin" data-i18n="musicLatin">Latin</option>
           <option value="doodle_cheerful" data-i18n="musicDoodle">Cheerful Doodle</option>
           <option value="gentle_waltz" data-i18n="musicWaltz">Baby Waltz</option>
           <option value="christmas" data-i18n="musicChristmas">🎄 Christmas Special</option>
         </select>
-      </div>
+      </fieldset>
       <fieldset class="form-group aspect-group">
         <legend data-i18n="aspectLabel">Card format</legend>
         <label class="aspect-option">
@@ -148,47 +183,14 @@
         <legend data-i18n="renderStyleLabel">Animation style</legend>
         <label class="style-card">
           <input type="radio" name="renderStyle" value="real_photo" checked>
-          <svg class="style-card-img" viewBox="0 0 200 150" aria-hidden="true">
-            <rect width="200" height="150" fill="#fffaf0"/>
-            <path d="M0 40H200M0 80H200M0 120H200" stroke="#f1e4cf" stroke-width="1.5" fill="none"/>
-            <circle cx="168" cy="30" r="12" fill="#ffd54a" stroke="#f0a91d" stroke-width="3"/>
-            <path d="M168 10v-6M168 56v-6M148 30h-6M194 30h-6M154 16l-4-4M182 44l4 4M182 16l4-4M154 44l-4 4" stroke="#f0a91d" stroke-width="3" stroke-linecap="round"/>
-            <path d="M28 128c-2-16 1-26 0-36" stroke="#4caf50" stroke-width="3.5" stroke-linecap="round" fill="none"/>
-            <circle cx="28" cy="86" r="7" fill="#ff8fb1" stroke="#e8467c" stroke-width="3"/>
-            <path d="M12 132c30-4 150 4 176 0" stroke="#7bc47f" stroke-width="4" stroke-linecap="round" fill="none"/>
-            <path d="M82 62c-10 14-8 42 6 50 12 7 34 6 44-4 10-10 8-36-4-48-12-10-34-8-46 2z" fill="#ffb27a" stroke="#e8734a" stroke-width="4" stroke-linejoin="round"/>
-            <path d="M84 98l-18 10M130 96l20-12M96 112l-6 16M118 112l8 16" stroke="#e8734a" stroke-width="5" stroke-linecap="round" fill="none"/>
-            <circle cx="98" cy="80" r="4" fill="#5a3b2e"/><circle cx="120" cy="80" r="4" fill="#5a3b2e"/>
-            <path d="M99 94c6 7 14 7 20 0" stroke="#5a3b2e" stroke-width="3.5" stroke-linecap="round" fill="none"/>
-          </svg>
+          <img class="style-card-img" src="/sfondi/ORIGINALDRAW%20.png" alt="" width="200" height="150" aria-hidden="true">
           <span class="style-card-title" data-i18n="renderStyleRealPhoto">Real Draw</span>
           <span class="style-card-sub" data-i18n="renderStyleRealPhotoSub">Keep the original drawing alive</span>
           <svg class="style-card-check" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12"/><path d="M6.5 12.5l4 4 7-8.5"/></svg>
         </label>
         <label class="style-card">
           <input type="radio" name="renderStyle" value="claymation">
-          <svg class="style-card-img" viewBox="0 0 200 150" aria-hidden="true">
-            <defs>
-              <radialGradient id="clayBody" cx="38%" cy="30%" r="75%"><stop offset="0" stop-color="#ffc79a"/><stop offset="0.55" stop-color="#ff9a5c"/><stop offset="1" stop-color="#e26f34"/></radialGradient>
-              <radialGradient id="clayLimb" cx="35%" cy="30%" r="80%"><stop offset="0" stop-color="#ffb680"/><stop offset="1" stop-color="#df6a30"/></radialGradient>
-              <linearGradient id="clayBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e3f6fc"/><stop offset="1" stop-color="#c9ecf6"/></linearGradient>
-            </defs>
-            <rect width="200" height="150" fill="url(#clayBg)"/>
-            <ellipse cx="108" cy="130" rx="46" ry="8" fill="#000" opacity="0.14"/>
-            <rect x="82" y="108" width="14" height="22" rx="7" fill="url(#clayLimb)"/>
-            <rect x="112" y="108" width="14" height="22" rx="7" fill="url(#clayLimb)"/>
-            <rect x="46" y="84" width="40" height="14" rx="7" fill="url(#clayLimb)" transform="rotate(-24 70 91)"/>
-            <rect x="126" y="76" width="40" height="14" rx="7" fill="url(#clayLimb)" transform="rotate(24 146 83)"/>
-            <ellipse cx="104" cy="82" rx="38" ry="40" fill="url(#clayBody)"/>
-            <ellipse cx="90" cy="60" rx="12" ry="7" fill="#fff" opacity="0.4" transform="rotate(-30 90 60)"/>
-            <ellipse cx="92" cy="80" rx="6.5" ry="8" fill="#fff"/><ellipse cx="116" cy="80" rx="6.5" ry="8" fill="#fff"/>
-            <circle cx="93" cy="82" r="3.6" fill="#3d2a22"/><circle cx="117" cy="82" r="3.6" fill="#3d2a22"/>
-            <circle cx="94.2" cy="80.6" r="1.2" fill="#fff"/><circle cx="118.2" cy="80.6" r="1.2" fill="#fff"/>
-            <ellipse cx="80" cy="96" rx="6" ry="4" fill="#ff6685" opacity="0.55"/><ellipse cx="128" cy="96" rx="6" ry="4" fill="#ff6685" opacity="0.55"/>
-            <path d="M95 99c6 8 14 8 20 0" stroke="#3d2a22" stroke-width="3.5" stroke-linecap="round" fill="none"/>
-            <circle cx="166" cy="32" r="9" fill="#ffd54a"/><circle cx="163" cy="29" r="3" fill="#fff" opacity="0.5"/>
-            <circle cx="34" cy="116" r="8" fill="#ff8fb1"/><circle cx="31.5" cy="113.5" r="2.5" fill="#fff" opacity="0.5"/>
-          </svg>
+          <img class="style-card-img" src="/sfondi/3DEFFECT.png" alt="" width="200" height="150" aria-hidden="true">
           <span class="style-card-title" data-i18n="renderStyleClaymation">3D Claymation</span>
           <span class="style-card-sub" data-i18n="renderStyleClaymationSub">Turn your drawing into a 3D character</span>
           <svg class="style-card-check" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12"/><path d="M6.5 12.5l4 4 7-8.5"/></svg>
@@ -238,10 +240,12 @@
         </fieldset>
         <p class="card-preview-label" data-i18n="cardPreviewLabel">Live card preview</p>
         <div id="cardPreview" class="card-preview" data-ratio="9:16" data-font="playful">
-          <div class="card-decor card-decor-classic" aria-hidden="true">
-            <svg class="decor-bunting" viewBox="0 0 1080 100" preserveAspectRatio="none"><path class="d-string" d="M46 30 Q540 70 1034 30"/><g transform="translate(72.0 32.0) rotate(4.4)"><path class="d0" d="M-18 0 L18 0 L0 44 Z"/></g><g transform="translate(124.0 35.8) rotate(3.9)"><path class="d1" d="M-18 0 L18 0 L0 44 Z"/></g><g transform="translate(176.0 39.1) rotate(3.4)"><path class="d2" d="M-18 0 L18 0 L0 44 Z"/></g><g transform="translate(228.0 42.0) rotate(2.9)"><path class="d3" d="M-18 0 L18 0 L0 44 Z"/></g><g transform="translate(280.0 44.5) rotate(2.4)"><path class="d4" d="M-18 0 L18 0 L0 44 Z"/></g><g transform="translate(332.0 46.5) rotate(2.0)"><path class="d5" d="M-18 0 L18 0 L0 44 Z"/></g><g transform="translate(384.0 48.0) rotate(1.5)"><path class="d0" d="M-18 0 L18 0 L0 44 Z"/></g><g transform="translate(436.0 49.1) rotate(1.0)"><path class="d1" d="M-18 0 L18 0 L0 44 Z"/></g><g transform="translate(488.0 49.8) rotate(0.5)"><path class="d2" d="M-18 0 L18 0 L0 44 Z"/></g><g transform="translate(540.0 50.0) rotate(0.0)"><path class="d3" d="M-18 0 L18 0 L0 44 Z"/></g><g transform="translate(592.0 49.8) rotate(-0.5)"><path class="d4" d="M-18 0 L18 0 L0 44 Z"/></g><g transform="translate(644.0 49.1) rotate(-1.0)"><path class="d5" d="M-18 0 L18 0 L0 44 Z"/></g><g transform="translate(696.0 48.0) rotate(-1.5)"><path class="d0" d="M-18 0 L18 0 L0 44 Z"/></g><g transform="translate(748.0 46.5) rotate(-2.0)"><path class="d1" d="M-18 0 L18 0 L0 44 Z"/></g><g transform="translate(800.0 44.5) rotate(-2.4)"><path class="d2" d="M-18 0 L18 0 L0 44 Z"/></g><g transform="translate(852.0 42.0) rotate(-2.9)"><path class="d3" d="M-18 0 L18 0 L0 44 Z"/></g><g transform="translate(904.0 39.1) rotate(-3.4)"><path class="d4" d="M-18 0 L18 0 L0 44 Z"/></g><g transform="translate(956.0 35.8) rotate(-3.9)"><path class="d5" d="M-18 0 L18 0 L0 44 Z"/></g><g transform="translate(1008.0 32.0) rotate(-4.4)"><path class="d0" d="M-18 0 L18 0 L0 44 Z"/></g></svg>
+          <div class="card-preview-art">
+            <div class="card-preview-window">
+              <img id="cardPreviewImage" alt="" class="hidden">
+              <span id="cardPreviewEmpty" data-i18n="cardPreviewEmpty">Your drawing will appear here</span>
+            </div>
           </div>
-          <div class="card-preview-art"><img id="cardPreviewImage" alt="" class="hidden"><span id="cardPreviewEmpty" data-i18n="cardPreviewEmpty">Your drawing will appear here</span></div>
           <div class="card-preview-banner hidden" id="cardPreviewBanner"></div>
         </div>
       </fieldset>
