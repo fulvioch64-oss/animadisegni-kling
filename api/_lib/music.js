@@ -9,7 +9,7 @@ const MUSIC_TRACKS = {
   claudiette: 'Claudiette.MP3',
   doodle_cheerful: 'doodle cheerful.mp3',
   gentle_waltz: 'A Gentle Waltz.mp3',
-  // Christmas Special soundtrack (also forced by the Christmas card theme).
+  // Christmas Special soundtrack, selectable manually in the music menu.
   christmas: 'Jazzy We Wish You a Merry Christmas.mp3'
 };
 const DEFAULT_MUSIC = 'disco70';

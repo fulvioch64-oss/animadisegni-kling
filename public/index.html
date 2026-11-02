@@ -190,11 +190,6 @@
           <label for="cardMessage" data-i18n="cardMessageLabel">Your message</label>
           <input type="text" id="cardMessage" maxlength="60" autocomplete="off" placeholder="Happy Birthday!" data-i18n-placeholder="cardMessagePlaceholder">
         </div>
-        <fieldset class="chip-group" aria-label="Theme" data-i18n-aria-label="cardThemeLabel">
-          <legend data-i18n="cardThemeLabel">Theme</legend>
-          <label class="chip"><input type="radio" name="cardTheme" value="classic" checked><span data-i18n="cardThemeClassic">Classic</span></label>
-          <label class="chip"><input type="radio" name="cardTheme" value="christmas"><span data-i18n="cardThemeChristmas">🎄 Christmas Special</span></label>
-        </fieldset>
         <fieldset class="chip-group" aria-label="Font" data-i18n-aria-label="cardFontLabel">
           <legend data-i18n="cardFontLabel">Font</legend>
           <label class="chip chip-font-playful"><input type="radio" name="cardFont" value="playful" checked><span data-i18n="cardFontPlayful">Playful</span></label>
@@ -203,13 +198,7 @@
           <label class="chip chip-font-cute"><input type="radio" name="cardFont" value="cute"><span data-i18n="cardFontCute">Cute</span></label>
         </fieldset>
         <p class="card-preview-label" data-i18n="cardPreviewLabel">Live card preview</p>
-        <div id="cardPreview" class="card-preview" data-ratio="9:16" data-font="playful" data-theme="classic">
-          <div class="card-decor card-decor-christmas" aria-hidden="true">
-            <svg class="decor-garland" viewBox="0 0 1080 150" preserveAspectRatio="none"><path class="x-string" d="M46 46 Q540 114 1034 46"/><g class="x-needles"><path d="M70 50 l-14 38 M150 58 l14 36 M230 65 l-14 38 M310 70 l14 36 M390 76 l-14 38 M470 78 l14 36 M540 80 l-14 38 M620 78 l14 36 M700 76 l-14 38 M780 70 l14 36 M860 65 l-14 38 M940 58 l14 36 M1010 50 l-14 38"/></g><circle class="x-red" cx="100" cy="86" r="15"/><path class="x-gold" d="M210 80 L217 98 L236 98 L221 109 L227 127 L210 116 L193 127 L199 109 L184 98 L203 98Z"/><circle class="x-gold" cx="320" cy="108" r="15"/><circle class="x-red" cx="430" cy="114" r="15"/><path class="x-gold" d="M540 94 L547 112 L566 112 L551 123 L557 141 L540 130 L523 141 L529 123 L514 112 L533 112Z"/><circle class="x-gold" cx="650" cy="114" r="15"/><circle class="x-red" cx="760" cy="108" r="15"/><path class="x-gold" d="M870 80 L877 98 L896 98 L881 109 L887 127 L870 116 L853 127 L859 109 L844 98 L863 98Z"/><circle class="x-gold" cx="980" cy="86" r="15"/></svg>
-            <span class="xmas-orn left upper">❄</span><span class="xmas-orn left lower">❄</span>
-            <span class="xmas-orn right upper">🔴</span><span class="xmas-orn right lower">🎄</span>
-            <span class="xmas-orn spark s1">✦</span><span class="xmas-orn spark s2">❄</span><span class="xmas-orn spark s3">✦</span><span class="xmas-orn spark s4">❄</span>
-          </div>
+        <div id="cardPreview" class="card-preview" data-ratio="9:16" data-font="playful">
           <div class="card-decor card-decor-classic" aria-hidden="true">
             <svg class="decor-bunting" viewBox="0 0 1080 150" preserveAspectRatio="none"><path class="d-string" d="M46 46 Q540 114 1034 46"/><g transform="translate(84 51) rotate(7)"><path class="d0" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(160 60) rotate(6)"><path class="d1" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(236 67) rotate(5)"><path class="d2" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(312 73) rotate(4)"><path class="d3" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(388 77) rotate(2)"><path class="d4" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(464 79) rotate(1)"><path class="d5" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(540 80) rotate(0)"><path class="d0" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(616 79) rotate(-1)"><path class="d1" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(692 77) rotate(-2)"><path class="d2" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(768 73) rotate(-4)"><path class="d3" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(844 67) rotate(-5)"><path class="d4" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(920 60) rotate(-6)"><path class="d5" d="M-29 0 L29 0 L0 70 Z"/></g><g transform="translate(996 51) rotate(-7)"><path class="d0" d="M-29 0 L29 0 L0 70 Z"/></g></svg>
             <svg class="decor-confetti" viewBox="0 0 100 100" preserveAspectRatio="none"><circle class="d1" cx="7" cy="26" r="0.9"/><rect class="d2" x="9.6" y="37.5" width="2.8" height="1" transform="rotate(47 11 38)"/><path class="d3" d="M6 53.4 L6.5 54.5 L7.6 55 L6.5 55.5 L6 56.6 L5.5 55.5 L4.4 55 L5.5 54.5Z"/><path class="d0" d="M10 69.3 C8 68 9 66.6 10 67.6 C11 66.6 12 68 10 69.3Z"/><circle class="d1" cx="7" cy="82" r="0.9"/><rect class="d2" x="91.6" y="29.5" width="2.8" height="1" transform="rotate(55 93 30)"/><path class="d3" d="M89 42.4 L89.5 43.5 L90.6 44 L89.5 44.5 L89 45.6 L88.5 44.5 L87.4 44 L88.5 43.5Z"/><path class="d0" d="M94 61.3 C92 60 93 58.6 94 59.6 C95 58.6 96 60 94 61.3Z"/><circle class="d1" cx="90" cy="74" r="0.9"/></svg>

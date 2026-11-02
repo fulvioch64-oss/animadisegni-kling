@@ -82,7 +82,6 @@ const selectedAspectRatio = () => aspectInputs.find((input) => input.checked)?.v
 const languageSelect = document.getElementById('languageSelect');
 const cardMessage = document.getElementById('cardMessage');
 const cardFontInputs = [...document.querySelectorAll('input[name="cardFont"]')];
-const cardThemeInputs = [...document.querySelectorAll('input[name="cardTheme"]')];
 const cardPreview = document.getElementById('cardPreview');
 const cardPreviewImage = document.getElementById('cardPreviewImage');
 const cardPreviewEmpty = document.getElementById('cardPreviewEmpty');
@@ -100,8 +99,7 @@ let cardPreviewRenderVersion = 0;
 
 const selectedCard = () => ({
   message: (cardMessage?.value || '').replace(/\s+/g, ' ').trim(),
-  font: checkedValue(cardFontInputs, 'playful'),
-  theme: checkedValue(cardThemeInputs, 'classic')
+  font: checkedValue(cardFontInputs, 'playful')
 });
 
 function wrapCardMessage(message, maxChars) {
@@ -132,7 +130,6 @@ async function renderCardPreview() {
   const metrics = CARD_FONT_METRICS[card.font] || CARD_FONT_METRICS.playful;
   const baseFontSize = 96 * metrics.scale;
   cardPreview.dataset.font = card.font;
-  cardPreview.dataset.theme = card.theme;
   await document.fonts.load(`400 ${baseFontSize}px ${metrics.family}`);
   await document.fonts.ready;
   if (renderVersion !== cardPreviewRenderVersion) return;
@@ -396,31 +393,12 @@ function validVideoUrl(value) {
   }
 }
 
-let presetBeforeChristmas = null;
-
-// Christmas Special always plays the jazzy Christmas track: lock the music menu on it and restore the choice afterwards.
-function syncChristmasMusic() {
-  const christmas = checkedValue(cardThemeInputs, 'classic') === 'christmas';
-  if (christmas && !motionPreset.disabled) {
-    presetBeforeChristmas = motionPreset.value;
-    motionPreset.value = 'christmas';
-    motionPreset.disabled = true;
-  } else if (!christmas && motionPreset.disabled) {
-    motionPreset.disabled = false;
-    if (presetBeforeChristmas && [...motionPreset.options].some((option) => option.value === presetBeforeChristmas)) {
-      motionPreset.value = presetBeforeChristmas;
-    }
-    presetBeforeChristmas = null;
-  }
-}
-
 function saveCustomization() {
-  syncChristmasMusic();
   renderCardPreview();
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
       photo: selectedPhoto,
-      motionPreset: motionPreset.disabled ? (presetBeforeChristmas || motionPreset.value) : motionPreset.value,
+      motionPreset: motionPreset.value,
       aspectRatio: selectedAspectRatio(),
       renderStyle: selectedRenderStyle(),
       background: selectedBackground(),
@@ -437,7 +415,7 @@ aspectInputs.forEach((input) => input.addEventListener('change', saveCustomizati
 renderStyleInputs.forEach((input) => input.addEventListener('change', saveCustomization));
 backgroundInputs.forEach((input) => input.addEventListener('change', saveCustomization));
 cardMessage.addEventListener('input', saveCustomization);
-cardFontInputs.concat(cardThemeInputs).forEach((input) => input.addEventListener('change', saveCustomization));
+cardFontInputs.forEach((input) => input.addEventListener('change', saveCustomization));
 languageSelect.addEventListener('change', async () => {
   try {
     await i18n.setLocale(languageSelect.value);
@@ -608,10 +586,7 @@ function restoreCustomization() {
       if (typeof savedCard.message === 'string') cardMessage.value = savedCard.message.slice(0, 60);
       const savedFont = cardFontInputs.find((input) => input.value === savedCard.font);
       if (savedFont) savedFont.checked = true;
-      const savedTheme = cardThemeInputs.find((input) => input.value === savedCard.theme);
-      if (savedTheme) savedTheme.checked = true;
     }
-    syncChristmasMusic();
     if (customization.photo && typeof customization.photo.dataUrl === 'string') {
       selectedPhoto = customization.photo;
       resetSourceImage = imagePreview;

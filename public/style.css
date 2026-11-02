@@ -291,26 +291,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid #69c9e880; outline-of
 .decor-balloon.right { right: 1.6cqw; }
 .decor-balloon.upper { top: 34%; }
 .decor-balloon.lower { top: 60%; }
-.card-preview[data-theme="christmas"] { --card-text: #b71c1c; }
-.card-decor-christmas { display: none; }
-.card-preview[data-theme="christmas"] .card-decor-christmas { display: block; }
-.card-preview[data-theme="christmas"] .card-decor-classic { display: none; }
-.decor-garland { top: 0; height: 13.9cqw; }
-.decor-garland .x-string { fill: none; stroke: #266f3e; stroke-width: 10; stroke-linecap: round; }
-.decor-garland .x-needles path { fill: none; stroke: #2f8a4f; stroke-width: 9; stroke-linecap: round; }
-.decor-garland .x-red { fill: #be1e2d; }
-.decor-garland .x-gold { fill: #e2a824; }
-.xmas-orn { position: absolute; font-size: 5.2cqw; line-height: 1; color: #78aacd; }
-.xmas-orn.left { left: 1.8cqw; }
-.xmas-orn.right { right: 1.8cqw; }
-.xmas-orn.upper { top: 34%; }
-.xmas-orn.lower { top: 60%; }
-.xmas-orn.spark { font-size: 2.6cqw; color: #e2a824; }
-.xmas-orn.spark.s2, .xmas-orn.spark.s4 { color: #78aacd; }
-.xmas-orn.s1 { left: 2cqw; top: 80%; }
-.xmas-orn.s2 { right: 2cqw; top: 46%; }
-.xmas-orn.s3 { right: 2.5cqw; top: 82%; }
-.xmas-orn.s4 { left: 2.5cqw; top: 48%; }
 .card-preview-art { position: relative; z-index: 1; display: grid; box-sizing: border-box; flex: 1 1 0; min-height: 0; padding: 19cqw 14cqw 4cqw; place-items: center; color: #b4abb6; font-size: 4cqw; text-align: center; }
 .card-preview-art img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 1cqw; box-shadow: 0 0 0 1.1cqw var(--paper), 0 0 0 1.35cqw var(--card-text), 0 0 0 2.4cqw var(--paper), 0 0 0 2.6cqw var(--card-text); }
 .card-preview-banner { position: relative; z-index: 3; min-width: 0; box-sizing: border-box; margin: 0 8cqw 8.5cqw; padding: 1cqw 0; background: transparent; color: var(--card-text); text-align: center; }
@@ -319,12 +299,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid #69c9e880; outline-of
 .card-preview[data-font="handwritten"] .card-preview-banner { font-family: 'Caveat', cursive; }
 .card-preview[data-font="party"] .card-preview-banner { font-family: 'Baloo 2', sans-serif; }
 .card-preview[data-font="cute"] .card-preview-banner { font-family: 'Patrick Hand', cursive; }
-/* Christmas (9:16): the printed template PNG is the background; the artwork sits in its window and the message below it. */
-.card-preview[data-theme="christmas"]:not([data-ratio="1:1"]) { background: url("/sfondi/christmas-frame.png") center / 100% 100% no-repeat; }
-.card-preview[data-theme="christmas"]:not([data-ratio="1:1"]) .card-decor { display: none; }
-.card-preview[data-theme="christmas"]:not([data-ratio="1:1"]) .card-preview-art { position: absolute; left: 14.8%; top: 26.8%; width: 70.5%; height: 53.2%; flex: none; padding: 0; background: var(--paper); }
-.card-preview[data-theme="christmas"]:not([data-ratio="1:1"]) .card-preview-art img { width: 100%; height: 100%; max-width: none; max-height: none; object-fit: cover; border-radius: 0; box-shadow: none; }
-.card-preview[data-theme="christmas"]:not([data-ratio="1:1"]) .card-preview-banner { position: absolute; left: 15%; right: 15%; top: 80.8%; height: 13.2%; margin: 0; padding: 0; display: flex; align-items: center; justify-content: center; }
 .cropper-modal { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 12px; background: rgba(40, 30, 50, 0.7); }
 .cropper-box { display: flex; flex-direction: column; gap: 10px; width: min(100%, 460px); max-height: 100%; overflow: auto; padding: 16px; background: #fff; border-radius: 18px; box-shadow: var(--shadow); }
 .cropper-box h3 { margin: 0; }

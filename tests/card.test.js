@@ -50,20 +50,24 @@ test('frame is full-bleed textured paper with no colored outer border', async ()
     const offset = (y * info.width + x) * info.channels;
     PAPER_COLOR.forEach((value, i) => assert.ok(Math.abs(data[offset + i] - value) < 45, `edge pixel ${x},${y}`));
   }
-  assert.deepEqual(normalizeCard({ message: 'Ciao', borderColor: 'red' }), { message: 'Ciao', font: 'playful', theme: 'classic' });
+  assert.deepEqual(normalizeCard({ message: 'Ciao', borderColor: 'red' }), { message: 'Ciao', font: 'playful' });
   assert.equal(normalizeCard({ borderColor: 'red' }), null);
 });
 
-test('christmas theme: normalized, keeps frame without message, prompt and audio mapping', async () => {
+test('card theme no longer exists: legacy theme values are ignored and the Christmas background changes only the scene', async () => {
   const { normalizeCard } = require('../api/_lib/card.js');
   const { buildPrompt } = require('../api/_lib/fal-video.js');
+  const { normalizeBackground } = require('../api/_lib/image-upload.js');
   const { pickTrack } = require('../api/_lib/music.js');
-  assert.deepEqual(normalizeCard({ message: 'Ciao', theme: 'christmas' }), { message: 'Ciao', font: 'playful', theme: 'christmas' });
-  assert.equal(normalizeCard({ theme: 'christmas' }).theme, 'christmas');
-  assert.throws(() => normalizeCard({ message: 'x', theme: 'halloween' }), /card.theme/);
-  assert.match(buildPrompt('disco70', 'real_photo', 'original', 'christmas'), /Christmas/);
-  assert.doesNotMatch(buildPrompt('disco70', 'real_photo', 'original'), /Christmas/);
-  assert.ok(pickTrack('christmas').file);
+  assert.deepEqual(normalizeCard({ message: 'Ciao', theme: 'christmas' }), { message: 'Ciao', font: 'playful' });
+  assert.equal(normalizeCard({ theme: 'christmas' }), null);
+  assert.equal(normalizeBackground('christmas_special'), 'christmas_special');
+  const christmasScene = buildPrompt('disco70', 'real_photo', 'christmas_special');
+  assert.match(christmasScene, /cozy festive christmas room with decorated tree/);
+  assert.doesNotMatch(christmasScene, /Lindy hop|Festive Christmas atmosphere/);
+  assert.doesNotMatch(buildPrompt('christmas', 'real_photo', 'original'), /Lindy hop|Festive Christmas atmosphere/);
+  assert.equal(pickTrack('disco70').id, 'disco70');
+  assert.equal(pickTrack('christmas').id, 'christmas');
 });
 
 test('message path data never contains NaN (opentype rounding bug)', async () => {
@@ -71,18 +75,18 @@ test('message path data never contains NaN (opentype rounding bug)', async () =>
   const { prepareCardAssets } = require('../api/_lib/card.js');
   const directory = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'card-'));
   try {
-    for (const theme of ['classic', 'christmas']) {
-      await prepareCardAssets({ message: 'Merry Christmas Dad', font: 'cute', theme }, { width: 1080, height: 1920 }, directory);
+    for (const size of [{ width: 1080, height: 1920 }, { width: 1080, height: 1080 }]) {
+      await prepareCardAssets({ message: 'Merry Christmas Dad', font: 'cute' }, size, directory);
       const { data, info } = await sharp(path.join(directory, 'card-frame.png')).raw().toBuffer({ resolveWithObject: true });
       // Rightmost part of the message line ("Dad") must have text-colored pixels.
       let dark = 0;
-      for (let y = 1700; y < 1850; y += 1) {
+      for (let y = size.height - 220; y < size.height - 70; y += 1) {
         for (let x = 800; x < 900; x += 1) {
           const o = (y * info.width + x) * info.channels;
           if (data[o + 1] < 80 && data[o + 2] < 120) dark += 1;
         }
       }
-      assert.ok(dark > 50, `${theme}: end of message not drawn`);
+      assert.ok(dark > 50, `${size.width}x${size.height}: end of message not drawn`);
     }
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });

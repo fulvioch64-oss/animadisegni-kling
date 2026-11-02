@@ -63,8 +63,7 @@ const DANCE_PROMPTS = {
   ballet: 'elegant, light ballet dance: graceful arm movements, tiptoe steps, gentle swaying and a happy bow',
   waltz: 'graceful waltz in three-beat time: gliding side steps, gentle swaying, arms held in a soft waltz pose and a happy bow',
   relax: 'slow, calm dance to a gentle waltz: soft swaying from side to side, slow arm movements and a peaceful smile',
-  sweet: 'tender, emotional dance: slow gentle sways, hands held to the heart and a warm, loving smile',
-  christmas: 'Joyful Christmas swing dance movement, energetic Lindy hop steps, cheerful holiday rhythm, smooth continuous bouncing and footwork, festive celebration vibe, seamless looping movement'
+  sweet: 'tender, emotional dance: slow gentle sways, hands held to the heart and a warm, loving smile'
 };
 // Unified "style + music" ids (lowercase letters/digits after normalizeStyle) reuse the existing prompts.
 const DANCE_ALIASES = {
@@ -84,18 +83,16 @@ function normalizeRenderStyle(value) {
   return typeof value === 'string' && Object.hasOwn(INTROS, value) ? value : DEFAULT_RENDER_STYLE;
 }
 
-const CHRISTMAS_TOUCH = ' Festive Christmas atmosphere: gentle falling snowflakes, warm twinkling holiday lights and a joyful, cozy holiday spirit, while the character itself stays unchanged.';
-
 const SCENE_PROMPTS = {
   christmas_special: 'cozy festive christmas room with decorated tree, burning fireplace, stockings, warm fairy lights, softly falling snow outside the window'
 };
 
-function buildPrompt(motionPreset, renderStyle, background, theme) {
-  const dance = DANCE_PROMPTS[theme === 'christmas' ? 'christmas' : normalizeStyle(motionPreset)] || DEFAULT_DANCE;
+function buildPrompt(motionPreset, renderStyle, background) {
+  const dance = DANCE_PROMPTS[normalizeStyle(motionPreset)] || DEFAULT_DANCE;
   const intro = INTROS[normalizeRenderStyle(renderStyle)];
   // A dance entry that is already a full sentence replaces the whole "The character performs a {DANCE}." clause.
   const prompt = (dance.endsWith('.') ? intro.replace('The character performs a {DANCE}.', dance) : intro.replace('{DANCE}', dance))
-    + ' ' + MOTION_RULES + (theme === 'christmas' ? CHRISTMAS_TOUCH : '');
+    + ' ' + MOTION_RULES;
   if (!background || background === 'original') return prompt;
   // The scene is already part of the source image: keep it instead of forbidding background content.
   return prompt
@@ -148,7 +145,7 @@ async function assertImageReachable(imageUrl) {
 }
 
 // Validates the key, configures the client and builds the model + input shared by the blocking and the queued calls.
-async function prepareFalCall(imageUrl, motionPreset, { referenceMotionVideoUrl = null, aspectRatio = DEFAULT_ASPECT_RATIO, renderStyle = DEFAULT_RENDER_STYLE, background = 'original', theme = 'classic' } = {}) {
+async function prepareFalCall(imageUrl, motionPreset, { referenceMotionVideoUrl = null, aspectRatio = DEFAULT_ASPECT_RATIO, renderStyle = DEFAULT_RENDER_STYLE, background = 'original' } = {}) {
   const falKey = getFalKey();
   console.log('FAL_KEY caricata:', falKey ? 'Presente' : 'Mancante');
   if (!falKey) {
@@ -164,7 +161,7 @@ async function prepareFalCall(imageUrl, motionPreset, { referenceMotionVideoUrl 
   const model = resolveModel();
   const input = {
     [model.imageField]: imageUrl,
-    prompt: buildPrompt(motionPreset, renderStyle, background, theme),
+    prompt: buildPrompt(motionPreset, renderStyle, background),
     negative_prompt: buildNegativePrompt(background),
     duration: '5',
     ...model.extraInput

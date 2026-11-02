@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const opentype = require('opentype.js');
-const { buildFrameImage, christmasTemplate, PAPER_COLOR, themeTextColor } = require('./card-frame.js');
+const { buildFrameImage, PAPER_COLOR, CARD_TEXT_COLOR } = require('./card-frame.js');
 
 const MAX_MESSAGE_LENGTH = 60;
 
@@ -15,7 +15,6 @@ const CARD_FONTS = {
   cute: { file: 'PatrickHand.ttf', scale: 1.2 }
 };
 const DEFAULT_FONT = 'playful';
-const CARD_THEMES = ['classic', 'christmas'];
 
 function cardError(message) {
   const error = new Error(message);
@@ -35,12 +34,8 @@ function normalizeCard(raw) {
   if (typeof font !== 'string' || !Object.hasOwn(CARD_FONTS, font)) {
     throw cardError(`card.font must be one of: ${Object.keys(CARD_FONTS).join(', ')}.`);
   }
-  const theme = raw.theme === undefined || raw.theme === '' ? 'classic' : raw.theme;
-  if (typeof theme !== 'string' || !CARD_THEMES.includes(theme)) {
-    throw cardError(`card.theme must be one of: ${CARD_THEMES.join(', ')}.`);
-  }
-  if (!message && theme === 'classic') return null;
-  return { message, font, theme };
+  if (!message) return null;
+  return { message, font };
 }
 
 function wrapMessage(message, maxChars) {
@@ -67,8 +62,6 @@ function wrapMessage(message, maxChars) {
 
 // Geometry shared by the frame image and the FFmpeg filters.
 async function layoutCard(card, { width, height }) {
-  // The PNG template is 9:16; other formats keep the generated SVG decorations.
-  const template = card.theme === 'christmas' && width * 16 === height * 9 ? await christmasTemplate(width, height) : null;
   const font = CARD_FONTS[card.font];
   const text = (card.message || '').trim();
   const lines = text ? wrapMessage(text, 20) : [];
@@ -76,20 +69,14 @@ async function layoutCard(card, { width, height }) {
   const widestLine = lines.length
     ? Math.max(...lines.map((line) => loadedFont.getAdvanceWidth(line, 1) + 2))
     : 1;
-  // With the template the message sits in the free paper area below the window, inside the printed border.
-  const freeTop = template ? template.window.y + template.window.height + 24 : 0;
-  const freeBottom = template ? Math.round(height * 0.94) : 0;
-  const textWidth = template ? width - 380 : width - 220;
-  let fontSize = lines.length
+  const textWidth = width - 220;
+  const fontSize = lines.length
     ? Math.floor(Math.min(96 * font.scale, textWidth / widestLine))
     : 0;
-  if (template && lines.length) fontSize = Math.min(fontSize, Math.floor((freeBottom - freeTop - 24) / (lines.length * 1.18)));
   const lineHeight = Math.round(fontSize * 1.18);
   const bannerHeight = lines.length ? lines.length * lineHeight + 24 : 0;
   const bannerBottomMargin = 84;
-  const bannerTop = template
-    ? Math.round(freeTop + (freeBottom - freeTop - bannerHeight) / 2)
-    : height - bannerBottomMargin - bannerHeight;
+  const bannerTop = height - bannerBottomMargin - bannerHeight;
   const topZone = Math.round(Math.min(width, height) * 0.15);
   // Room kept around the artwork window for its double keyline (RING_EXTENT) and breathing space.
   const regionTop = topZone + 30;
@@ -97,14 +84,14 @@ async function layoutCard(card, { width, height }) {
   const regionHeight = regionBottom - regionTop;
   const windowHeight = Math.max(2, Math.floor(Math.min(regionHeight, ((width - 200) * height) / width)));
   const windowWidth = Math.floor((windowHeight * width) / height);
-  const windowBox = template ? template.window : {
+  const windowBox = {
     x: Math.round((width - windowWidth) / 2),
     y: regionTop + Math.round((regionHeight - windowHeight) / 2),
     width: windowWidth,
     height: windowHeight
   };
   return {
-    width, height, lines, fontSize, lineHeight, bannerHeight, bannerTop, topZone, template,
+    width, height, lines, fontSize, lineHeight, bannerHeight, bannerTop, topZone,
     window: windowBox, areaHeight: windowBox.height
   };
 }
@@ -153,7 +140,7 @@ function pathData(commands) {
 async function messageSvg(card, layout) {
   if (!layout.lines.length) return '';
   const font = await loadCardFont(card.font);
-  const color = themeTextColor(card.theme).join(',');
+  const color = CARD_TEXT_COLOR.join(',');
   const ascent = (font.ascender / font.unitsPerEm) * layout.fontSize;
   const paths = layout.lines.map((line, i) => {
     const x = (layout.width - font.getAdvanceWidth(line, layout.fontSize)) / 2;
@@ -168,10 +155,10 @@ async function messageSvg(card, layout) {
 async function prepareCardAssets(card, size, directory) {
   const layout = await layoutCard(card, size);
   const message = await messageSvg(card, layout);
-  const frame = await buildFrameImage(layout, message, card.theme);
+  const frame = await buildFrameImage(layout, message);
   await fs.promises.writeFile(path.join(directory, 'card-frame.png'), frame);
   const { window: box } = layout;
-  const fit = `scale=${box.width}:${box.height}:force_original_aspect_ratio=${layout.template ? 'increase' : 'decrease'},${layout.template ? `crop=${box.width}:${box.height},` : ''}`
+  const fit = `scale=${box.width}:${box.height}:force_original_aspect_ratio=decrease,`
     + `pad=${size.width}:${size.height}:${box.x}+(${box.width}-iw)/2:${box.y}+(${box.height}-ih)/2:0x${PAPER_COLOR.map((value) => value.toString(16).padStart(2, '0')).join('')},setsar=1`;
   return { layout, fit, frameFile: 'card-frame.png' };
 }
