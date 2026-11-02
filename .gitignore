@@ -3,3 +3,4 @@
 .generated-videos/
 .env*
 scripts/
+node_modules/
