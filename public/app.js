@@ -393,12 +393,16 @@ function validVideoUrl(value) {
   }
 }
 
+// Christmas Special background pre-selects the Christmas track only until the user picks music manually.
+let musicChosenManually = false;
+
 function saveCustomization() {
   renderCardPreview();
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
       photo: selectedPhoto,
       motionPreset: motionPreset.value,
+      musicChosenManually,
       aspectRatio: selectedAspectRatio(),
       renderStyle: selectedRenderStyle(),
       background: selectedBackground(),
@@ -410,9 +414,16 @@ function saveCustomization() {
   }
 }
 
+motionPreset.addEventListener('change', () => { musicChosenManually = true; });
 motionPreset.addEventListener('change', saveCustomization);
 aspectInputs.forEach((input) => input.addEventListener('change', saveCustomization));
 renderStyleInputs.forEach((input) => input.addEventListener('change', saveCustomization));
+backgroundInputs.forEach((input) => input.addEventListener('change', () => {
+  const christmasTrack = [...motionPreset.options].some((option) => option.value === 'christmas');
+  if (selectedBackground() === 'christmas_special' && !musicChosenManually && christmasTrack) {
+    motionPreset.value = 'christmas';
+  }
+}));
 backgroundInputs.forEach((input) => input.addEventListener('change', saveCustomization));
 cardMessage.addEventListener('input', saveCustomization);
 cardFontInputs.forEach((input) => input.addEventListener('change', saveCustomization));
@@ -575,6 +586,7 @@ function restoreCustomization() {
       && [...motionPreset.options].some((option) => option.value === customization.motionPreset)) {
       motionPreset.value = customization.motionPreset;
     }
+    musicChosenManually = customization.musicChosenManually === true;
     const savedAspect =  aspectInputs.find((input) => input.value === customization.aspectRatio);
     if (savedAspect) savedAspect.checked = true;
     const savedStyle = renderStyleInputs.find((input) => input.value === customization.renderStyle);
