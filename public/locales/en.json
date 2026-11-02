@@ -92,6 +92,8 @@
   "renderStyleLabel": "Animation style",
   "renderStyleFaithful": "Faithful Drawing (original drawing, 2.5D cutout)",
   "renderStyleClaymation": "3D Claymation",
+  "renderStyleRealPhotoSub": "Keep the original drawing alive",
+  "renderStyleClaymationSub": "Turn your drawing into a 3D character",
   "renderStyleRealPhoto": "Real Draw",
   "cropperTitle": "Center your subject",
   "cropperHint": "Drag to move, use the slider or mouse wheel to zoom.",

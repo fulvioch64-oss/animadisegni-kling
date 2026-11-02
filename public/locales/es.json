@@ -92,6 +92,8 @@
   "renderStyleLabel": "Estilo de animación",
   "renderStyleFaithful": "Dibujo fiel (dibujo original, recorte 2.5D)",
   "renderStyleClaymation": "Plastilina 3D",
+  "renderStyleRealPhotoSub": "Mantén vivo el dibujo original",
+  "renderStyleClaymationSub": "Convierte tu dibujo en un personaje 3D",
   "renderStyleRealPhoto": "Dibujo real",
   "cropperTitle": "Centra tu motivo",
   "cropperHint": "Arrastra para mover; usa el control deslizante o la rueda del ratón para hacer zoom.",

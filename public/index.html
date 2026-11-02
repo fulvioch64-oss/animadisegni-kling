@@ -146,13 +146,52 @@
       </fieldset>
       <fieldset class="form-group aspect-group style-group">
         <legend data-i18n="renderStyleLabel">Animation style</legend>
-        <label class="aspect-option">
+        <label class="style-card">
           <input type="radio" name="renderStyle" value="real_photo" checked>
-          <span data-i18n="renderStyleRealPhoto">Real Draw</span>
+          <svg class="style-card-img" viewBox="0 0 200 150" aria-hidden="true">
+            <rect width="200" height="150" fill="#fffaf0"/>
+            <path d="M0 40H200M0 80H200M0 120H200" stroke="#f1e4cf" stroke-width="1.5" fill="none"/>
+            <circle cx="168" cy="30" r="12" fill="#ffd54a" stroke="#f0a91d" stroke-width="3"/>
+            <path d="M168 10v-6M168 56v-6M148 30h-6M194 30h-6M154 16l-4-4M182 44l4 4M182 16l4-4M154 44l-4 4" stroke="#f0a91d" stroke-width="3" stroke-linecap="round"/>
+            <path d="M28 128c-2-16 1-26 0-36" stroke="#4caf50" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+            <circle cx="28" cy="86" r="7" fill="#ff8fb1" stroke="#e8467c" stroke-width="3"/>
+            <path d="M12 132c30-4 150 4 176 0" stroke="#7bc47f" stroke-width="4" stroke-linecap="round" fill="none"/>
+            <path d="M82 62c-10 14-8 42 6 50 12 7 34 6 44-4 10-10 8-36-4-48-12-10-34-8-46 2z" fill="#ffb27a" stroke="#e8734a" stroke-width="4" stroke-linejoin="round"/>
+            <path d="M84 98l-18 10M130 96l20-12M96 112l-6 16M118 112l8 16" stroke="#e8734a" stroke-width="5" stroke-linecap="round" fill="none"/>
+            <circle cx="98" cy="80" r="4" fill="#5a3b2e"/><circle cx="120" cy="80" r="4" fill="#5a3b2e"/>
+            <path d="M99 94c6 7 14 7 20 0" stroke="#5a3b2e" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+          </svg>
+          <span class="style-card-title" data-i18n="renderStyleRealPhoto">Real Draw</span>
+          <span class="style-card-sub" data-i18n="renderStyleRealPhotoSub">Keep the original drawing alive</span>
+          <svg class="style-card-check" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12"/><path d="M6.5 12.5l4 4 7-8.5"/></svg>
         </label>
-        <label class="aspect-option">
+        <label class="style-card">
           <input type="radio" name="renderStyle" value="claymation">
-          <span data-i18n="renderStyleClaymation">3D Claymation</span>
+          <svg class="style-card-img" viewBox="0 0 200 150" aria-hidden="true">
+            <defs>
+              <radialGradient id="clayBody" cx="38%" cy="30%" r="75%"><stop offset="0" stop-color="#ffc79a"/><stop offset="0.55" stop-color="#ff9a5c"/><stop offset="1" stop-color="#e26f34"/></radialGradient>
+              <radialGradient id="clayLimb" cx="35%" cy="30%" r="80%"><stop offset="0" stop-color="#ffb680"/><stop offset="1" stop-color="#df6a30"/></radialGradient>
+              <linearGradient id="clayBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e3f6fc"/><stop offset="1" stop-color="#c9ecf6"/></linearGradient>
+            </defs>
+            <rect width="200" height="150" fill="url(#clayBg)"/>
+            <ellipse cx="108" cy="130" rx="46" ry="8" fill="#000" opacity="0.14"/>
+            <rect x="82" y="108" width="14" height="22" rx="7" fill="url(#clayLimb)"/>
+            <rect x="112" y="108" width="14" height="22" rx="7" fill="url(#clayLimb)"/>
+            <rect x="46" y="84" width="40" height="14" rx="7" fill="url(#clayLimb)" transform="rotate(-24 70 91)"/>
+            <rect x="126" y="76" width="40" height="14" rx="7" fill="url(#clayLimb)" transform="rotate(24 146 83)"/>
+            <ellipse cx="104" cy="82" rx="38" ry="40" fill="url(#clayBody)"/>
+            <ellipse cx="90" cy="60" rx="12" ry="7" fill="#fff" opacity="0.4" transform="rotate(-30 90 60)"/>
+            <ellipse cx="92" cy="80" rx="6.5" ry="8" fill="#fff"/><ellipse cx="116" cy="80" rx="6.5" ry="8" fill="#fff"/>
+            <circle cx="93" cy="82" r="3.6" fill="#3d2a22"/><circle cx="117" cy="82" r="3.6" fill="#3d2a22"/>
+            <circle cx="94.2" cy="80.6" r="1.2" fill="#fff"/><circle cx="118.2" cy="80.6" r="1.2" fill="#fff"/>
+            <ellipse cx="80" cy="96" rx="6" ry="4" fill="#ff6685" opacity="0.55"/><ellipse cx="128" cy="96" rx="6" ry="4" fill="#ff6685" opacity="0.55"/>
+            <path d="M95 99c6 8 14 8 20 0" stroke="#3d2a22" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+            <circle cx="166" cy="32" r="9" fill="#ffd54a"/><circle cx="163" cy="29" r="3" fill="#fff" opacity="0.5"/>
+            <circle cx="34" cy="116" r="8" fill="#ff8fb1"/><circle cx="31.5" cy="113.5" r="2.5" fill="#fff" opacity="0.5"/>
+          </svg>
+          <span class="style-card-title" data-i18n="renderStyleClaymation">3D Claymation</span>
+          <span class="style-card-sub" data-i18n="renderStyleClaymationSub">Turn your drawing into a 3D character</span>
+          <svg class="style-card-check" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12"/><path d="M6.5 12.5l4 4 7-8.5"/></svg>
         </label>
       </fieldset>
       <fieldset class="form-group aspect-group style-group bg-group">
