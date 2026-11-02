@@ -14,7 +14,8 @@ const DEFAULT_BACKGROUND = 'original';
 const BACKGROUND_FILES = {
   playroom: 'stanza-giochi.png',
   enchanted_stage: 'palco-incantato.png',
-  neon_stage: 'palco-neon.png'
+  neon_stage: 'palco-neon.png',
+  christmas_special: 'christmas-stage.jpg'
 };
 const BACKGROUND_IDS = [DEFAULT_BACKGROUND, ...Object.keys(BACKGROUND_FILES)];
 

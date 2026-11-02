@@ -86,6 +86,10 @@ function normalizeRenderStyle(value) {
 
 const CHRISTMAS_TOUCH = ' Festive Christmas atmosphere: gentle falling snowflakes, warm twinkling holiday lights and a joyful, cozy holiday spirit, while the character itself stays unchanged.';
 
+const SCENE_PROMPTS = {
+  christmas_special: 'cozy festive christmas room with decorated tree, burning fireplace, stockings, warm fairy lights, softly falling snow outside the window'
+};
+
 function buildPrompt(motionPreset, renderStyle, background, theme) {
   const dance = DANCE_PROMPTS[theme === 'christmas' ? 'christmas' : normalizeStyle(motionPreset)] || DEFAULT_DANCE;
   const intro = INTROS[normalizeRenderStyle(renderStyle)];
@@ -97,7 +101,9 @@ function buildPrompt(motionPreset, renderStyle, background, theme) {
   return prompt
     .replace(' on a clean paper background', ' on an illustrated scene')
     .replace('no background generation, no extra scene elements, ', '')
-    + ' Keep the illustrated scene behind the character exactly as in the image.';
+    + (SCENE_PROMPTS[background]
+      ? ` Scene: ${SCENE_PROMPTS[background]}. Keep this scene behind the character exactly as in the image.`
+      : ' Keep the illustrated scene behind the character exactly as in the image.');
 }
 
 function buildNegativePrompt(background) {
