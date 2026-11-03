@@ -769,6 +769,19 @@ packagesModal.addEventListener('click', (event) => {
   if (event.target === packagesModal) packagesModal.close();
 });
 
+let redirectingToCheckout = false;
+
+// Back from Stripe (bfcache restore): the page keeps its "redirecting" state, so reset it.
+function resetCheckoutRedirectState() {
+  if (!redirectingToCheckout) return;
+  redirectingToCheckout = false;
+  showPackagesStatus('');
+  packagesGrid.querySelectorAll('button').forEach((button) => { button.disabled = false; });
+}
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) resetCheckoutRedirectState();
+});
+
 async function buyPackage(packageId, button) {
   if (!isSignedIn) {
     packagesModal.close();
@@ -782,6 +795,7 @@ async function buyPackage(packageId, button) {
     const target = new URL(data.url);
     if (target.protocol !== 'https:' && target.hostname !== 'localhost') throw new Error(t('errorCheckoutUrl'));
     sessionStorage.setItem(PENDING_PURCHASE_KEY, JSON.stringify({ packageId, baseline: credits }));
+    redirectingToCheckout = true;
     showPackagesStatus(t('statusRedirecting'));
     window.location.assign(target.href);
   } catch (error) {
