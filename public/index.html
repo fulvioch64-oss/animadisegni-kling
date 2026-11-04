@@ -116,6 +116,14 @@
         <button type="button" id="btnBuyCredits" class="btn-secondary credits-buy" data-i18n="buyCredits">Buy credits</button>
       </div>
               <p class="credit-rule" data-i18n="creditRule">1 credit = 1 HD Card</p>
+      <form id="promoForm" class="promo-form" autocomplete="off">
+        <label for="promoCode" class="promo-label" data-i18n="promoLabel">Have a promo code?</label>
+        <div class="promo-row">
+          <input type="text" id="promoCode" class="promo-input" maxlength="40" autocapitalize="characters" spellcheck="false" data-i18n-placeholder="promoPlaceholder" placeholder="ANIMA3-XXXXX">
+          <button type="submit" id="btnPromo" class="btn-secondary promo-button" data-i18n="promoButton">Redeem</button>
+        </div>
+        <p id="promoStatus" class="status" role="status" aria-live="polite"></p>
+      </form>
       <fieldset class="form-group music-group">
         <legend data-i18n="styleMusicLabel">Style & music</legend>
         <div class="music-grid">
@@ -308,7 +316,7 @@
     <p data-i18n="termsSharingText"></p>
     <h3 data-i18n="termsPrivacyTitle">Privacy & uploaded files</h3>
     <p data-i18n="termsPrivacyText"></p>
-    <h3 data-i18n="termsRefundTitle">No cash refunds</h3>
+    <h3 data-i18n="termsRefundTitle">Refunds and digital credits</h3>
     <p data-i18n="termsRefundText"></p>
     <form method="dialog" class="modal-actions"><button type="submit" class="btn-secondary" data-i18n="legalClose">Close</button></form>
   </dialog>

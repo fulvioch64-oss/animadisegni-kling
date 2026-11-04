@@ -42,6 +42,21 @@ CREATE TABLE IF NOT EXISTS users (
   last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Promo codes: each code grants bonus main credits and can be redeemed once in absolute.
+CREATE TABLE IF NOT EXISTS promo_codes (
+  code TEXT PRIMARY KEY,
+  main_credits INTEGER NOT NULL DEFAULT 3 CHECK (main_credits > 0),
+  redeemed_by_user UUID REFERENCES users(user_id),
+  redeemed_wallet_id UUID REFERENCES wallets(wallet_id),
+  redeemed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO promo_codes (code, main_credits) VALUES
+  ('ANIMA3-TEST1', 3),
+  ('ANIMA3-TEST2', 3)
+ON CONFLICT (code) DO NOTHING;
+
 -- Anonymous wallets already merged into an account (a wallet can be claimed only once).
 CREATE TABLE IF NOT EXISTS wallet_claims (
   anon_wallet_id UUID PRIMARY KEY,

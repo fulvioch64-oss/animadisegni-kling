@@ -715,7 +715,95 @@ async function resolveCreditWallet(walletId) {
   }
 }
 
+// ---- Promo codes: each code grants bonus main credits and can be redeemed once, by one wallet only. ----
+const PROMO_CODE_PATTERN = /^[A-Z0-9-]{3,40}$/;
+const memoryPromos = new Map([
+  ['ANIMA3-TEST1', { credits: 3, redeemedAt: null }],
+  ['ANIMA3-TEST2', { credits: 3, redeemedAt: null }],
+]);
+
+function promoError(message, statusCode, code) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.code = code;
+  return error;
+}
+
+function normalizePromoCode(value) {
+  const code = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  if (!PROMO_CODE_PATTERN.test(code)) throw promoError('Invalid promo code.', 400, 'PROMO_CODE_INVALID');
+  return code;
+}
+
+// Marks the code as used and credits the wallet in one transaction: either both happen or neither.
+async function redeemPromoCode(userId, walletId, rawCode) {
+  const code = normalizePromoCode(rawCode);
+
+  // Cooldown per user against code guessing.
+  if (!(await acquireLock(`promo-redeem:${userId}`, 3))) {
+    throw promoError('Too many attempts. Wait a few seconds.', 429, 'PROMO_RATE_LIMITED');
+  }
+
+  if (!useDatabase()) {
+    const promo = memoryPromos.get(code);
+    if (!promo) throw promoError('Invalid promo code.', 404, 'PROMO_CODE_INVALID');
+    if (promo.redeemedAt) throw promoError('Promo code already used.', 409, 'PROMO_CODE_USED');
+    promo.redeemedAt = new Date();
+    const wallet = memoryWallets.get(walletId) || { main: 0, retry: 0 };
+    wallet.main += promo.credits;
+    memoryWallets.set(walletId, wallet);
+    return { granted: promo.credits, ...balance(wallet.main, wallet.retry) };
+  }
+
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    await ensureWallet(client, walletId);
+
+    const claimed = await client.query(
+      `UPDATE promo_codes
+       SET redeemed_by_user = $2, redeemed_wallet_id = $3, redeemed_at = NOW()
+       WHERE code = $1 AND redeemed_at IS NULL
+       RETURNING main_credits`,
+      [code, userId, walletId]
+    );
+
+    if (claimed.rowCount === 0) {
+      const exists = await client.query('SELECT 1 FROM promo_codes WHERE code = $1', [code]);
+      await client.query('ROLLBACK');
+      throw exists.rowCount > 0
+        ? promoError('Promo code already used.', 409, 'PROMO_CODE_USED')
+        : promoError('Invalid promo code.', 404, 'PROMO_CODE_INVALID');
+    }
+
+    const granted = claimed.rows[0].main_credits;
+    await client.query(
+      `INSERT INTO wallet_events (event_key, wallet_id, main_delta, retry_delta)
+       VALUES ($1, $2, $3, 0)`,
+      [`animadisegni:wallet-event:promo:${code}`, walletId, granted]
+    );
+    const updated = await client.query(
+      `UPDATE wallets
+       SET main_credits = main_credits + $2, updated_at = NOW()
+       WHERE wallet_id = $1
+       RETURNING main_credits, retry_credits`,
+      [walletId, granted]
+    );
+
+    await client.query('COMMIT');
+    return { granted, ...balance(updated.rows[0].main_credits, updated.rows[0].retry_credits) };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    // 42P01: schema.sql has not been applied yet (no promo_codes table).
+    if (error.code === '42P01') throw promoError('Promo codes are not available yet.', 503, 'PROMO_UNAVAILABLE');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
+  redeemPromoCode,
   upsertGoogleUser,
   getUserById,
   claimAnonymousWallet,

@@ -1250,6 +1250,39 @@ btnLogout.addEventListener('click', async () => {
   await refreshCredits().catch(() => {});
 });
 
+// ---- Promo codes (signed-in users only) ----
+const promoForm = document.getElementById('promoForm');
+const promoCode = document.getElementById('promoCode');
+const btnPromo = document.getElementById('btnPromo');
+const promoStatus = document.getElementById('promoStatus');
+
+function setPromoStatus(message, isError) {
+  promoStatus.textContent = message;
+  promoStatus.classList.toggle('status-error', isError);
+}
+
+promoForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const code = promoCode.value.trim();
+  if (!code) return;
+  if (!isSignedIn) {
+    setPromoStatus(t('promoLoginRequired'), true);
+    authBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  btnPromo.disabled = true;
+  try {
+    const data = await callJsonApi('/api/credits', { method: 'POST', body: { code } });
+    setCredits(data);
+    promoCode.value = '';
+    setPromoStatus(t('promoSuccess', { count: data.granted }), false);
+  } catch (error) {
+    setPromoStatus(error.message, true);
+  } finally {
+    btnPromo.disabled = false;
+  }
+});
+
 i18n.applyTranslations();
 restoreCustomization();
 renderCardPreview();
