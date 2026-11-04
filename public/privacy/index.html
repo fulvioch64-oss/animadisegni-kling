@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="/">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#fffdf5">
+  <meta name="description" content="Privacy Policy – AnimaDisegni">
+  <title>Privacy Policy – AnimaDisegni</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Patrick+Hand&family=Caveat:wght@500;700&family=Baloo+2:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .privacy-page { max-width: 760px; margin: 0 auto; padding: 24px 20px 40px; line-height: 1.6; overflow-wrap: anywhere; }
+    .privacy-page h1 { font-size: 1.7rem; margin: 8px 0; }
+    .privacy-page h2 { font-size: 1.15rem; margin: 28px 0 8px; }
+    .privacy-page p { margin: 0 0 12px; }
+    .privacy-page ul { margin: 0 0 12px; padding-left: 22px; }
+    .privacy-page li { margin-bottom: 4px; }
+    .privacy-page a { color: inherit; }
+    .privacy-back { display: inline-block; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <header class="navbar">
+    <a class="logo" href="/" aria-label="Little Moves, home" data-i18n-aria-label="brandHome"><span aria-hidden="true">✨</span> Little Moves</a>
+    <div class="navbar-tools">
+      <label class="language-picker">
+        <span class="visually-hidden" data-i18n="languageLabel">Language</span>
+        <select id="languageSelect" aria-label="Language" data-i18n-aria-label="languageLabel">
+          <option value="en">🇬🇧 English</option>
+          <option value="it">🇮🇹 Italiano</option>
+          <option value="es">🇪🇸 Español</option>
+        </select>
+      </label>
+    </div>
+  </header>
+  <main class="privacy-page">
+    <a class="footer-link privacy-back" href="/" data-i18n="privacyBack">← Back to the app</a>
+    <article id="privacyContent"></article>
+  </main>
+  <footer>
+    <nav class="footer-links" aria-label="Legal and help">
+      <a class="footer-link" href="/privacy" data-i18n="privacy">Privacy Policy</a>
+    </nav>
+  </footer>
+  <script type="module">
+    import { i18n } from '/i18n.js';
+
+    const container = document.getElementById('privacyContent');
+
+    function appendWithLinks(parent, text) {
+      text.split('\n').forEach((line, index) => {
+        if (index > 0) parent.append(document.createElement('br'));
+        let rest = line;
+        let match;
+        while ((match = /(^|\s)@(\S+)/.exec(rest))) {
+          parent.append(rest.slice(0, match.index) + match[1]);
+          const target = match[2];
+          const link = document.createElement('a');
+          link.textContent = target;
+          link.href = target.includes('@') ? `mailto:${target}` : target;
+          if (!target.includes('@')) { link.target = '_blank'; link.rel = 'noopener noreferrer'; }
+          parent.append(link);
+          rest = rest.slice(match.index + match[0].length);
+        }
+        parent.append(rest);
+      });
+    }
+
+    function render() {
+      const blocks = i18n.t('privacyBlocks');
+      container.replaceChildren();
+      let list = null;
+      for (const block of Array.isArray(blocks) ? blocks : []) {
+        let element;
+        if (block.startsWith('- ')) {
+          if (!list) { list = document.createElement('ul'); container.append(list); }
+          const item = document.createElement('li');
+          appendWithLinks(item, block.slice(2));
+          list.append(item);
+          continue;
+        }
+        list = null;
+        if (block.startsWith('## ')) { element = document.createElement('h2'); appendWithLinks(element, block.slice(3)); }
+        else if (block.startsWith('# ')) { element = document.createElement('h1'); appendWithLinks(element, block.slice(2)); }
+        else { element = document.createElement('p'); appendWithLinks(element, block); }
+        container.append(element);
+      }
+      document.title = i18n.t('privacyPageTitle');
+    }
+
+    document.addEventListener('app:localechange', render);
+    document.getElementById('languageSelect').addEventListener('change', (event) => {
+      i18n.setLocale(event.target.value).catch((error) => console.error(error));
+    });
+    i18n.applyTranslations();
+  </script>
+</body>
+</html>
