@@ -49,7 +49,7 @@ const NEGATIVE_PROMPT = 'text, letters, watermark, extra limbs, page splitting, 
 const DEFAULT_RENDER_STYLE = 'real_photo';
 // Appended to every prompt: immediate motion and strictly frontal dancing.
 const MOTION_RULES = 'The character starts dancing dynamically from frame 1, instant rhythmic action with zero delay, no static pause at start. Strictly face-forward dance only: the character must remain 100% facing front towards the viewer at all times, with side-to-side steps, arm waving, bouncing up and down, no body rotations, no spinning.';
-const DRAW_PRESERVATION_RULES = 'Preserve the original drawing faithfully: keep its exact colors and where each color appears. Leave all areas that are white, blank, or uncolored exactly that way; do not fill them in or invent color. Keep the original outlines, silhouette, proportions, and distinctive details. Do not redraw, complete, or freely reinterpret the character. Show the entire character from head to toe with clear space around it from the very first frame; never crop or cut off any part. Allow the movement needed for the dance, but do not deform the character, change its proportions, or alter its colors.';
+const DRAW_PRESERVATION_RULES = 'Preserve the character’s original colors and their distribution, identity, distinctive features, and proportions. Show the entire character from head to toe with clear space around it from the very first frame; never crop or cut off any part. Allow the movement needed for the dance without deforming the character or changing its proportions, identity, features, or colors.';
 
 // Dance action per music style (key = motionPreset sent by the client, normalized to lowercase letters/digits).
 // To add a music genre, add one entry here.
