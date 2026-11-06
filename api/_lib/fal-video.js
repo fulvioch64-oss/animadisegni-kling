@@ -44,11 +44,12 @@ const INTROS = {
   real_photo: "2D character animation of a children's drawing on a clean paper background. The character performs a {DANCE}. Keep the original illustration lines intact, smooth motion, no background generation, no extra scene elements, no warping."
 };
 INTROS.faithful = INTROS.real_photo;
-const NEGATIVE_PROMPT = 'text, letters, watermark, extra limbs, page splitting, card opening, frame morphing, camera movement, blurry, low resolution, distortion, background generation, full back view, 360-degree spin, delayed motion, static opening';
+const NEGATIVE_PROMPT = 'newly generated text, random letters, words, numbers, captions, logos, watermarks, extra limbs, page splitting, card opening, frame morphing, camera movement, blurry, low resolution, distortion, background generation, full back view, 360-degree spin, delayed motion, static opening, character redesign, hairstyle change, face redesign, altered facial features, anime transformation, manga style, digital restyling, excessive beautification, added accessories';
 const DEFAULT_RENDER_STYLE = 'real_photo';
 // Appended to every prompt: fluid, immediate movement with natural turns, never fully away from the camera.
 const MOTION_RULES = 'The character begins moving dynamically from frame 1, with no static opening. Keep movement fluid and continuous, with natural transitions and full-body movement appropriate to the selected dance; avoid robotic stiffness, repeated gestures, abrupt jerks, and prolonged static poses. Gentle torso and body turns are allowed, but keep the character recognizable and never turn fully away from the camera.';
-const DRAW_PRESERVATION_RULES = 'After applying the selected visual style, preserve the character’s original colors and their distribution, identity, distinctive features, and proportions throughout the animation. Show the entire character from head to toe with clear space around it from the very first frame; never crop or cut off any part. The selected style may reinterpret the character as requested; during the dance, do not deform it or change its proportions, identity, features, or colors.';
+const DRAW_PRESERVATION_RULES = 'Preserve the character’s recognizable identity and distinctive features from the original child’s drawing throughout the animation. Keep the original overall hair shape and style, hairstyle, hair color, face, eyes, nose, mouth, colors, proportions, clothing, and graphic style. Do not redesign or restyle the character as anime, manga, or polished professional digital illustration, and do not add aesthetic details, accessories, or features absent from the source drawing. Show the entire character from head to toe with clear space around it from the very first frame; never crop or cut off any part. Allow natural movements of the arms, legs, torso, and head, normal perspective changes, and slight variations needed for animation. Allow facial expressions and facial movement that remain compatible with the original character. Keep the movement fluid, dynamic, and coherent with the selected dance while keeping the character recognizable and faithful to the drawing.';
+const BACKGROUND_TEXT_RULES = 'Do not generate any text, letters, words, numbers, captions, logos or watermarks in the background or on any newly generated objects, decorations, banners, signs or props. All background elements must remain purely visual and decorative, without writing or typography. Preserve only text that already exists in the original child\'s drawing, without inventing or altering it.';
 
 // Dance action per music style (key = motionPreset sent by the client, normalized to lowercase letters/digits).
 // To add a music genre, add one entry here.
@@ -92,7 +93,7 @@ function buildPrompt(motionPreset, renderStyle, background) {
   const intro = INTROS[normalizeRenderStyle(renderStyle)];
   // A dance entry that is already a full sentence replaces the whole "The character performs a {DANCE}." clause.
   const prompt = (dance.endsWith('.') ? intro.replace('The character performs a {DANCE}.', dance) : intro.replace('{DANCE}', dance))
-    + ' ' + MOTION_RULES + ' ' + DRAW_PRESERVATION_RULES;
+    + ' ' + MOTION_RULES + ' ' + DRAW_PRESERVATION_RULES + ' ' + BACKGROUND_TEXT_RULES;
   if (!background || background === 'original') return prompt;
   // The scene is already part of the source image: keep it instead of forbidding background content.
   return prompt

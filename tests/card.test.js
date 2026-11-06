@@ -83,6 +83,24 @@ test('legacy Claymation style values fall back to Real Draw', () => {
   assert.doesNotMatch(prompt, /fabric puppet|claymation|plasticine/i);
 });
 
+test('background text rules apply across dances and backgrounds while preserving source drawing text', () => {
+  const { buildPrompt, buildNegativePrompt } = require('../api/_lib/fal-video.js');
+  const dances = ['reggaeton', 'disco70', 'latin', 'ballet'];
+  const backgrounds = ['original', 'christmas_special', 'playroom'];
+
+  for (const dance of dances) {
+    for (const background of backgrounds) {
+      const prompt = buildPrompt(dance, 'real_photo', background);
+      assert.match(prompt, /Do not generate any text, letters, words, numbers, captions, logos or watermarks/);
+      assert.match(prompt, /Preserve only text that already exists in the original child's drawing, without inventing or altering it\./);
+    }
+  }
+
+  const negativePrompt = buildNegativePrompt('original');
+  assert.match(negativePrompt, /newly generated text/);
+  assert.doesNotMatch(negativePrompt, /^text, letters, watermark/);
+});
+
 test('message path data never contains NaN (opentype rounding bug)', async () => {
   const sharp = require('sharp');
   const { prepareCardAssets } = require('../api/_lib/card.js');
