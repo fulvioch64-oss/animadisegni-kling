@@ -76,6 +76,13 @@ test('card theme no longer exists: legacy theme values are ignored and the Chris
   assert.equal(pickTrack('christmas').id, 'christmas');
 });
 
+test('legacy Claymation style values fall back to Real Draw', () => {
+  const { buildPrompt } = require('../api/_lib/fal-video.js');
+  const prompt = buildPrompt('disco70', 'claymation', 'original');
+  assert.match(prompt, /^2D character animation/);
+  assert.doesNotMatch(prompt, /fabric puppet|claymation|plasticine/i);
+});
+
 test('message path data never contains NaN (opentype rounding bug)', async () => {
   const sharp = require('sharp');
   const { prepareCardAssets } = require('../api/_lib/card.js');

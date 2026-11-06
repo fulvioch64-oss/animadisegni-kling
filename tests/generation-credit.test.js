@@ -13,11 +13,19 @@ const path = require('node:path');
 // Stub the provider, the image upload and the renderer so only the credit logic is exercised.
 let submitBehaviour = async () => ({ requestId: 'req-1', modelId: 'fal-ai/test' });
 let checkBehaviour = async () => ({ done: true, url: 'https://fal.example/video.mp4' });
+const submittedCalls = [];
 const stub = (file, exports) => {
   const resolved = require.resolve(path.join('..', 'api', '_lib', file));
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
 };
-stub('fal-video.js', { submitVideoFromImage: (...args) => submitBehaviour(...args), checkFalVideo: (...args) => checkBehaviour(...args), buildPrompt: () => 'prompt' });
+stub('fal-video.js', {
+  submitVideoFromImage: (...args) => {
+    submittedCalls.push(args);
+    return submitBehaviour(...args);
+  },
+  checkFalVideo: (...args) => checkBehaviour(...args),
+  buildPrompt: (...args) => `prompt:${args[1]}`
+});
 stub('image-upload.js', {
   saveImageAsPublicUrl: async () => 'https://img.example/x.png',
   prepareImage: async (_dataUrl, _aspectRatio, background) => ({ url: 'https://img.example/x.png', background: background || 'original' })
@@ -33,7 +41,22 @@ async function fundedWallet(main = 1, retry = 0) {
   await store.walletAdjust(walletId, `order:${walletId}`, main, retry);
   return walletId;
 }
-const generate = (walletId) => createDance({ walletId, imageUrl: IMAGE, motionPreset: 'disco70' }, '127.0.0.1');
+const generate = (walletId, renderStyle) => createDance({
+  walletId,
+  imageUrl: IMAGE,
+  motionPreset: 'disco70',
+  ...(renderStyle ? { renderStyle } : {})
+}, '127.0.0.1');
+
+test('new generations ignore a client-supplied Claymation style', async () => {
+  const walletId = await fundedWallet(1);
+  const { generationToken } = await generate(walletId, 'claymation');
+  const order = await store.getRecord(`animadisegni:order:${generationToken}`);
+
+  assert.equal(submittedCalls.at(-1)[2].renderStyle, 'real_photo');
+  assert.equal(order.original_prompt_params.style, 'real_photo');
+  assert.equal(order.original_prompt_params.prompt, 'prompt:real_photo');
+});
 
 test('the request answers at once with PENDING and spends no credit', async () => {
   const walletId = await fundedWallet(1);

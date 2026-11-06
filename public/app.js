@@ -80,7 +80,7 @@ musicInputs.forEach((input) => input.addEventListener('change', () => {
   motionPreset.dispatchEvent(new Event('change'));
 }));const aspectInputs = [...document.querySelectorAll('input[name="aspectRatio"]')];
 const renderStyleInputs = [...document.querySelectorAll('input[name="renderStyle"]')];
-const selectedRenderStyle = () => renderStyleInputs.find((input) => input.checked)?.value || 'real_photo';
+const selectedRenderStyle = () => 'real_photo';
 const backgroundInputs = [...document.querySelectorAll('input[name="background"]')];
 const selectedBackground = () => backgroundInputs.find((input) => input.checked)?.value || 'original';
 const selectedAspectRatio = () => aspectInputs.find((input) => input.checked)?.value || '9:16';

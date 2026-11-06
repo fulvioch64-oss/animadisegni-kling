@@ -265,9 +265,10 @@ async function failGeneration(generationToken, error, { walletId, creditKind, ch
   if (charged) await walletRefund(walletId, creditKind).catch((refundError) => console.error('[credits] Refund failed:', refundError));
 }
 
-async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMotionPreset, aspectRatio: rawAspectRatio, renderStyle: rawRenderStyle, background: rawBackground, card: rawCard, music: rawMusic }, clientIp, wallet) {
+async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMotionPreset, aspectRatio: rawAspectRatio, background: rawBackground, card: rawCard, music: rawMusic }, clientIp, wallet) {
   const { walletId, creditKind } = wallet;
   const aspectRatio = normalizeAspectRatio(rawAspectRatio);
+  const renderStyle = 'real_photo';
   const card = normalizeCard(rawCard);
   const validatedImage = validateImageUrl(rawImageUrl);
   const imageHash = hashImage(validatedImage);
@@ -310,8 +311,8 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
   await createOrder({
     orderId: generationToken,
     params: {
-      prompt: buildPrompt(motionPreset, rawRenderStyle, background),
-      style: rawRenderStyle ?? null,
+      prompt: buildPrompt(motionPreset, renderStyle, background),
+      style: renderStyle,
       background,
       image: imageUrl,
       audio: audioFile,
@@ -322,7 +323,7 @@ async function createDanceInternal({ imageUrl: rawImageUrl, motionPreset: rawMot
   }).catch((error) => console.error(`[orders] Unable to create order ${generationToken}:`, error.message));
   if (useFal) {
     // The job is queued on Fal.ai and finished by the status polls: no request stays open and a restart does not lose it.
-    const queued = await submitVideoFromImage(imageUrl, motionPreset, { aspectRatio, renderStyle: rawRenderStyle, background });
+    const queued = await submitVideoFromImage(imageUrl, motionPreset, { aspectRatio, renderStyle, background });
     console.info('[generate] 3/3 job queued on Fal.ai: ' + queued.modelId + ' request ' + queued.requestId);
     await saveVideo(generationToken, { falRequestId: queued.requestId, falModelId: queued.modelId, falSubmittedAt: Date.now(), generationStatus: 'GENERATING' });
     return { generationToken, taskId: null, status: 'PENDING', canPoll: true };
