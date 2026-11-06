@@ -54,7 +54,7 @@ const DRAW_PRESERVATION_RULES = 'After applying the selected visual style, prese
 // To add a music genre, add one entry here.
 const DANCE_PROMPTS = {
   reggaeton: 'bouncy reggaeton dance with a rhythmic groove: hip sways, shoulder rolls, playful side steps and a happy smile',
-  disco: '1970s disco: alternate lively disco side steps with natural changes of weight; coordinate legs, hips, torso, and shoulders; add varied, expressive arm gestures, small rhythmic bounces and sways, spontaneous choreography variations, and smooth transitions. Make the dance joyful, playful, energetic, and full-body, not limited to the arms. Vary the choreography naturally throughout the video. Combine different disco steps and gestures in an organic, playful way rather than repeating a fixed sequence. The character should feel spontaneous, joyful and alive.',
+  disco: '1970s disco dance style, groovy arm pointing up and down, rhythmic side-to-side body sway, energetic and fun. Add alternating side steps, gentle rhythmic knee bends and playful coordinated arm movements. Smooth motion, fluid animation, continuous groove. Create natural variations in the choreography, avoiding repetitive movements. Keep the character predominantly facing the camera, preserving the original drawing’s identity, distinctive features, face, clothes, colors, and proportions throughout the dance.',
   hiphop: 'playful hip-hop dance with bounce: rhythmic arm swings, small hops, a cheerful groove and a confident smile',
   pop: 'catchy pop dance: energetic side steps, arm waves, bouncing up and down and a bright smile',
   latin: 'lively latin dance with quick footwork: side steps, hip movement and joyful arm gestures',
