@@ -97,8 +97,19 @@ test('background text rules apply across dances and backgrounds while preserving
   }
 
   const negativePrompt = buildNegativePrompt('original');
-  assert.match(negativePrompt, /newly generated text/);
-  assert.doesNotMatch(negativePrompt, /^text, letters, watermark/);
+  assert.equal(negativePrompt, 'anime style, redrawn face, face change, modified hair, teddy bear face, animal face, 3d render, vector style, helmet outline, head rotation');
+});
+
+test('Fal.ai prompt and negative prompt stay concise and preserve selected dance and scene', () => {
+  const { buildPrompt, buildNegativePrompt } = require('../api/_lib/fal-video.js');
+  const prompt = buildPrompt('disco70', 'real_photo', 'christmas_special');
+  const negativePrompt = buildNegativePrompt('christmas_special');
+
+  assert.ok(prompt.startsWith("2D character animation of a children's drawing. Strictly preserve original child drawing style, crayon texture, facial features, and hair structure."));
+  assert.match(prompt, /Dance: 1970s disco dance style/);
+  assert.match(prompt, /Scene: cozy festive christmas room/);
+  assert.equal(prompt.split('Strictly preserve original child drawing style').length - 1, 1);
+  assert.ok(prompt.length + negativePrompt.length <= 2000);
 });
 
 test('message path data never contains NaN (opentype rounding bug)', async () => {

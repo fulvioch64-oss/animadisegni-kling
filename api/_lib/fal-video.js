@@ -38,24 +38,17 @@ const MODELS = {
   }
 };
 
-// Prompts per render style. 'real_photo' is the "Real Draw" option of the UI; 'faithful' is accepted as an alias.
-// {DANCE} is replaced with the dance action of the selected music track.
-const INTROS = {
-  real_photo: "2D character animation of a children's drawing on a clean paper background. The character performs a {DANCE}. Keep the original illustration lines intact, smooth motion, no background generation, no extra scene elements, no warping."
-};
-INTROS.faithful = INTROS.real_photo;
-const NEGATIVE_PROMPT = 'newly generated text, random letters, words, numbers, captions, logos, watermarks, extra limbs, page splitting, card opening, frame morphing, camera movement, blurry, low resolution, distortion, background generation, full back view, 360-degree spin, delayed motion, static opening, character redesign, hairstyle change, face redesign, altered facial features, anime transformation, manga style, digital restyling, excessive beautification, added accessories';
+const BASE_PROMPT = "2D character animation of a children's drawing. Strictly preserve original child drawing style, crayon texture, facial features, and hair structure. No anime, no 3D restyle, no face changes. Keep head strictly front-facing. Smooth natural motion.";
+const FRAMING_RULE = 'Show the entire character from head to toe from the first frame; never crop it.';
+const NEGATIVE_PROMPT = 'anime style, redrawn face, face change, modified hair, teddy bear face, animal face, 3d render, vector style, helmet outline, head rotation';
 const DEFAULT_RENDER_STYLE = 'real_photo';
-// Appended to every prompt: fluid, immediate movement with natural turns, never fully away from the camera.
-const MOTION_RULES = 'The character begins moving dynamically from frame 1, with no static opening. Keep movement fluid and continuous, with natural transitions and full-body movement appropriate to the selected dance; avoid robotic stiffness, repeated gestures, abrupt jerks, and prolonged static poses. Gentle torso and body turns are allowed, but keep the character recognizable and never turn fully away from the camera.';
-const DRAW_PRESERVATION_RULES = 'Preserve the character’s recognizable identity and distinctive features from the original child’s drawing throughout the animation. Keep the original overall hair shape and style, hairstyle, hair color, face, eyes, nose, mouth, colors, proportions, clothing, and graphic style. Do not redesign or restyle the character as anime, manga, or polished professional digital illustration, and do not add aesthetic details, accessories, or features absent from the source drawing. Strictly lock and preserve the exact drawn face, eyes, hair, and crayon texture from the input image. Do NOT alter, redraw, enhance, or replace the character\'s head or face. Do NOT turn the face into an animal, teddy bear, or digital cartoon character. The facial features must remain 100% unchanged throughout the animation. Show the entire character from head to toe with clear space around it from the very first frame; never crop or cut off any part. Allow natural movements of the arms, legs, torso, and head, normal perspective changes, and slight variations needed for animation. Keep the movement fluid, dynamic, and coherent with the selected dance while keeping the character recognizable and faithful to the drawing.';
 const BACKGROUND_TEXT_RULES = 'Do not generate any text, letters, words, numbers, captions, logos or watermarks in the background or on any newly generated objects, decorations, banners, signs or props. All background elements must remain purely visual and decorative, without writing or typography. Preserve only text that already exists in the original child\'s drawing, without inventing or altering it.';
 
 // Dance action per music style (key = motionPreset sent by the client, normalized to lowercase letters/digits).
 // To add a music genre, add one entry here.
 const DANCE_PROMPTS = {
   reggaeton: 'bouncy reggaeton dance with a rhythmic groove: hip sways, shoulder rolls, playful side steps and a happy smile',
-  disco: '1970s disco dance style, groovy arm pointing up and down, rhythmic side-to-side body sway, energetic and fun. Add alternating side steps, gentle rhythmic knee bends and playful coordinated arm movements. Smooth motion, fluid animation, continuous groove. Create natural variations in the choreography, avoiding repetitive movements. Keep the character predominantly facing the camera, preserving the original drawing’s identity, distinctive features, face, clothes, colors, and proportions throughout the dance.',
+  disco: '1970s disco dance style, groovy arm pointing up and down, rhythmic side-to-side body sway, energetic and fun. Add alternating side steps, gentle rhythmic knee bends and playful coordinated arm movements. Smooth motion, fluid animation, continuous groove. Create natural variations in the choreography, avoiding repetitive movements.',
   hiphop: 'playful hip-hop dance with bounce: rhythmic arm swings, small hops, a cheerful groove and a confident smile',
   pop: 'catchy pop dance: energetic side steps, arm waves, bouncing up and down and a bright smile',
   latin: 'lively latin dance with quick footwork: side steps, hip movement and joyful arm gestures',
@@ -80,34 +73,23 @@ function normalizeStyle(value) {
   return typeof value === 'string' ? value.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
 }
 
-function normalizeRenderStyle(value) {
-  return typeof value === 'string' && Object.hasOwn(INTROS, value) ? value : DEFAULT_RENDER_STYLE;
-}
-
 const SCENE_PROMPTS = {
   christmas_special: 'cozy festive christmas room with decorated tree, burning fireplace, stockings, warm fairy lights, softly falling snow outside the window'
 };
 
-function buildPrompt(motionPreset, renderStyle, background) {
+function buildPrompt(motionPreset, _renderStyle, background) {
   const dance = DANCE_PROMPTS[normalizeStyle(motionPreset)] || DEFAULT_DANCE;
-  const intro = INTROS[normalizeRenderStyle(renderStyle)];
-  // A dance entry that is already a full sentence replaces the whole "The character performs a {DANCE}." clause.
-  const prompt = (dance.endsWith('.') ? intro.replace('The character performs a {DANCE}.', dance) : intro.replace('{DANCE}', dance))
-    + ' ' + MOTION_RULES + ' ' + DRAW_PRESERVATION_RULES + ' ' + BACKGROUND_TEXT_RULES;
-  if (!background || background === 'original') return prompt;
-  // The scene is already part of the source image: keep it instead of forbidding background content.
-  return prompt
-    .replace(' on a clean paper background', ' on an illustrated scene')
-    .replace('no background generation, no extra scene elements, ', '')
-    + (SCENE_PROMPTS[background]
-      ? ` Scene: ${SCENE_PROMPTS[background]}. Keep this scene behind the character exactly as in the image.`
-      : ' Keep the illustrated scene behind the character exactly as in the image.');
+  const segments = [BASE_PROMPT, FRAMING_RULE, `Dance: ${dance}`, BACKGROUND_TEXT_RULES];
+  if (background && background !== 'original') {
+    segments.push(SCENE_PROMPTS[background]
+      ? `Scene: ${SCENE_PROMPTS[background]}. Keep it behind the character.`
+      : 'Keep the illustrated scene behind the character.');
+  }
+  return segments.filter(Boolean).join(' ').trim();
 }
 
-function buildNegativePrompt(background) {
-  return background && background !== 'original'
-    ? NEGATIVE_PROMPT.replace(', background generation', ', background change')
-    : NEGATIVE_PROMPT;
+function buildNegativePrompt() {
+  return NEGATIVE_PROMPT;
 }
 
 function resolveModel() {
@@ -160,10 +142,15 @@ async function prepareFalCall(imageUrl, motionPreset, { referenceMotionVideoUrl 
   // Images uploaded to Fal storage are already reachable by Fal: the tunnel preflight only applies to self-hosted URLs.
   if (!/^https:\/\/[^/]*\.(?:fal\.media|fal\.run|fal\.ai)\//i.test(imageUrl)) await assertImageReachable(imageUrl);
   const model = resolveModel();
+  const prompt = buildPrompt(motionPreset, renderStyle, background);
+  const negativePrompt = buildNegativePrompt();
+  if (prompt.length + negativePrompt.length > 2000) {
+    throw new Error('Il prompt totale per Fal.ai supera il limite di 2000 caratteri.');
+  }
   const input = {
     [model.imageField]: imageUrl,
-    prompt: buildPrompt(motionPreset, renderStyle, background),
-    negative_prompt: buildNegativePrompt(background),
+    prompt,
+    negative_prompt: negativePrompt,
     duration: '5',
     ...model.extraInput
   };
