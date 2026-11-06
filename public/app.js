@@ -400,6 +400,8 @@ function validVideoUrl(value) {
 
 // Christmas Special background pre-selects the Christmas track only until the user picks music manually.
 let musicChosenManually = false;
+let christmasBackgroundAutoSelected = false;
+let backgroundBeforeChristmasAutoSelection = null;
 
 function saveCustomization() {
   renderCardPreview();
@@ -408,6 +410,8 @@ function saveCustomization() {
       photo: selectedPhoto,
       motionPreset: motionPreset.value,
       musicChosenManually,
+      christmasBackgroundAutoSelected,
+      backgroundBeforeChristmasAutoSelection,
       aspectRatio: selectedAspectRatio(),
       renderStyle: selectedRenderStyle(),
       background: selectedBackground(),
@@ -419,11 +423,29 @@ function saveCustomization() {
   }
 }
 
-motionPreset.addEventListener('change', () => { musicChosenManually = true; });
+motionPreset.addEventListener('change', () => {
+  musicChosenManually = true;
+  if (motionPreset.value === 'christmas') {
+    const christmasBackground = backgroundInputs.find((input) => input.value === 'christmas_special');
+    if (christmasBackground && !christmasBackground.checked && !christmasBackgroundAutoSelected) {
+      backgroundBeforeChristmasAutoSelection = selectedBackground();
+      christmasBackgroundAutoSelected = true;
+      christmasBackground.checked = true;
+    }
+  } else if (christmasBackgroundAutoSelected) {
+    const previousBackground = backgroundInputs.find((input) => input.value === backgroundBeforeChristmasAutoSelection)
+      || backgroundInputs.find((input) => input.value === 'original');
+    if (previousBackground) previousBackground.checked = true;
+    christmasBackgroundAutoSelected = false;
+    backgroundBeforeChristmasAutoSelection = null;
+  }
+});
 motionPreset.addEventListener('change', saveCustomization);
 aspectInputs.forEach((input) => input.addEventListener('change', saveCustomization));
 renderStyleInputs.forEach((input) => input.addEventListener('change', saveCustomization));
 backgroundInputs.forEach((input) => input.addEventListener('change', () => {
+  christmasBackgroundAutoSelected = false;
+  backgroundBeforeChristmasAutoSelection = null;
   const christmasTrack = [...motionPreset.options].some((option) => option.value === 'christmas');
   if (selectedBackground() === 'christmas_special' && !musicChosenManually && christmasTrack) {
     motionPreset.value = 'christmas';
@@ -600,6 +622,13 @@ function restoreCustomization() {
     if (savedStyle) savedStyle.checked = true;
     const savedBackground = backgroundInputs.find((input) => input.value === customization.background);
     if (savedBackground) savedBackground.checked = true;
+    const savedPreviousBackground = backgroundInputs.find((input) => input.value === customization.backgroundBeforeChristmasAutoSelection);
+    christmasBackgroundAutoSelected = customization.christmasBackgroundAutoSelected === true
+      && !!savedPreviousBackground
+      && savedBackground?.value === 'christmas_special';
+    backgroundBeforeChristmasAutoSelection = christmasBackgroundAutoSelected
+      ? savedPreviousBackground.value
+      : null;
     const savedCard = customization.card;
     if (savedCard && typeof savedCard === 'object') {
       if (typeof savedCard.message === 'string') cardMessage.value = savedCard.message.slice(0, 60);

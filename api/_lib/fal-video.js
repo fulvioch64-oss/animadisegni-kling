@@ -48,7 +48,7 @@ const BACKGROUND_TEXT_RULES = 'Do not generate any text, letters, words, numbers
 // To add a music genre, add one entry here.
 const DANCE_PROMPTS = {
   reggaeton: 'bouncy reggaeton dance with a rhythmic groove: hip sways, shoulder rolls, playful side steps and a happy smile',
-  disco: '1970s disco dance style, groovy arm pointing up and down, rhythmic side-to-side body sway, energetic and fun. Add alternating side steps, gentle rhythmic knee bends and playful coordinated arm movements. Smooth motion, fluid animation, continuous groove. Create natural variations in the choreography, avoiding repetitive movements.',
+  disco: '1970s disco dance style, energetic, confident and charismatic. Perform wide rhythmic side steps, smooth hip swings, bouncing knee movements, expressive shoulder rolls and dynamic arm gestures. Raise one arm overhead, point upward, then alternate arms while moving freely to the beat. Add stylish torso turns, playful footwork, body sways and spontaneous variations. Make the choreography bold, lively, joyful and unmistakably seventies disco. Dance continuously with natural, fluid and coordinated full-body movements, as if enjoying the music. Avoid repetitive two-step patterns or static poses.',
   hiphop: 'playful hip-hop dance with bounce: rhythmic arm swings, small hops, a cheerful groove and a confident smile',
   pop: 'catchy pop dance: energetic side steps, arm waves, bouncing up and down and a bright smile',
   latin: 'lively latin dance with quick footwork: side steps, hip movement and joyful arm gestures',
