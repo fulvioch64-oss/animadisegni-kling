@@ -38,26 +38,26 @@ const MODELS = {
   }
 };
 
-const BASE_PROMPT = "2D character animation of a children's drawing. Preserve the recognizable identity, original childlike drawing style, crayon texture, main colors, facial features, hairstyle and clothing. Allow natural flexibility in body proportions, posture, limb positions and joint articulation to perform the dance. Do not treat the drawing as a rigid cutout. Encourage playful, spontaneous and expressive full-body movement, with coordinated arms, legs, torso and head. Add lively bounces, playful hops, funny gestures, cheerful body sways, unexpected little variations and natural changes of rhythm. Make the character look genuinely happy and excited to dance, as if freely enjoying the music rather than following a rigid routine. Allow temporary shape adaptations when needed for fluid and convincing movement. Keep the character recognizable and faithful to the original drawing. No anime, manga or 3D restyling.";
-const FRAMING_RULE = 'Show the entire character from head to toe from the first frame; never crop it.';
-const NEGATIVE_PROMPT = 'anime style, redrawn face, face change, modified hair, teddy bear face, animal face, 3d render, vector style, helmet outline, head rotation';
+const BASE_PROMPT = "Keep the child's drawing recognizable in its original childlike style, colors and texture. Preserve the character's identity and features. Flexibly adapt proportions, posture and joints for natural, coordinated, playful, funny full-body movement.";
+const FRAMING_RULE = 'Keep the full character visible, head to toe, from the first frame.';
+const NEGATIVE_PROMPT = 'anime, manga, 3D restyle, altered face or identity, animal features';
 const DEFAULT_RENDER_STYLE = 'real_photo';
-const BACKGROUND_TEXT_RULES = 'Do not generate any text, letters, words, numbers, captions, logos or watermarks in the background or on any newly generated objects, decorations, banners, signs or props. All background elements must remain purely visual and decorative, without writing or typography. Preserve only text that already exists in the original child\'s drawing, without inventing or altering it.';
+const BACKGROUND_TEXT_RULES = 'No text, lettering, logos or watermarks in generated scenes; preserve any text in the original drawing.';
 
 // Dance action per music style (key = motionPreset sent by the client, normalized to lowercase letters/digits).
 // To add a music genre, add one entry here.
 const DANCE_PROMPTS = {
-  reggaeton: 'bouncy reggaeton dance with a rhythmic groove: hip sways, shoulder rolls, playful side steps and a happy smile',
-  disco: '1970s disco dance style, energetic, confident and charismatic. Perform wide rhythmic side steps, smooth hip swings, bouncing knee movements, expressive shoulder rolls and dynamic arm gestures. Raise one arm overhead, point upward, then alternate arms while moving freely to the beat. Add stylish torso turns, playful footwork, body sways and spontaneous variations. Make the choreography bold, lively, joyful and unmistakably seventies disco. Dance continuously with natural, fluid and coordinated full-body movements, as if enjoying the music. Avoid repetitive two-step patterns or static poses.',
-  hiphop: 'playful hip-hop dance with bounce: rhythmic arm swings, small hops, a cheerful groove and a confident smile',
-  pop: 'catchy pop dance: energetic side steps, arm waves, bouncing up and down and a bright smile',
-  latin: 'lively latin dance with quick footwork: side steps, hip movement and joyful arm gestures',
-  babydance: 'cute baby dance: tiny bouncy steps, wobbling side to side, waving both hands and giggling with excitement',
-  salsa: 'lively salsa dance with quick footwork: side steps, hip movement and joyful arm gestures',
-  ballet: 'elegant, light ballet dance: graceful arm movements, tiptoe steps, gentle swaying and a happy bow',
-  waltz: 'graceful waltz in three-beat time: gliding side steps, gentle swaying, arms held in a soft waltz pose and a happy bow',
-  relax: 'slow, calm dance to a gentle waltz: soft swaying from side to side, slow arm movements and a peaceful smile',
-  sweet: 'tender, emotional dance: slow gentle sways, hands held to the heart and a warm, loving smile'
+  reggaeton: 'Reggaeton groove: bouncy hip sways, shoulder rolls and playful side steps.',
+  disco: '70s disco: confident wide steps, hip swings, knee bounces, rolling shoulders and alternating overhead points; stylish, joyful footwork.',
+  hiphop: 'Playful hip-hop bounce with rhythmic arm swings, small hops and a confident groove.',
+  pop: 'Catchy pop choreography with energetic side steps, arm waves and upbeat hops.',
+  latin: 'Lively Latin dance with quick footwork, flowing hip action and joyful arm flourishes.',
+  babydance: 'Cute baby dance with tiny wobbly bounces, side steps, hand waves and giggly excitement.',
+  salsa: 'Salsa with quick syncopated steps, crisp turns, rhythmic hips and lively arm flourishes.',
+  ballet: 'Light ballet with graceful arm arcs, tiptoe steps, gentle sways and a cheerful bow.',
+  waltz: 'Three-beat waltz with gliding steps, soft turns, poised arms and a gentle bow.',
+  relax: 'Gentle slow dance with calm side-to-side sways and unhurried arm movements.',
+  sweet: 'Tender expressive dance with slow sways, hands over the heart and a warm smile.'
 };
 // Unified "style + music" ids (lowercase letters/digits after normalizeStyle) reuse the existing prompts.
 const DANCE_ALIASES = {
@@ -67,7 +67,7 @@ const DANCE_ALIASES = {
   gentlewaltz: 'waltz'
 };
 Object.entries(DANCE_ALIASES).forEach(([alias, target]) => { DANCE_PROMPTS[alias] = DANCE_PROMPTS[target]; });
-const DEFAULT_DANCE = 'joyful dance to an upbeat rhythm with cheerful family-party energy: gentle side steps, clapping hands, bouncing on the feet, waving and smiling with excitement';
+const DEFAULT_DANCE = 'Joyful family-party dance with gentle side steps, claps, bounces and cheerful waves.';
 
 function normalizeStyle(value) {
   return typeof value === 'string' ? value.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
