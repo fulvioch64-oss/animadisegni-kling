@@ -38,7 +38,7 @@ const MODELS = {
   }
 };
 
-const BASE_PROMPT = "2D character animation of a children's drawing. Strictly preserve original child drawing style, crayon texture, facial features, and hair structure. No anime, no 3D restyle, no face changes. Keep head strictly front-facing. Smooth natural motion.";
+const BASE_PROMPT = "2D character animation of a children's drawing. Preserve the recognizable identity, original childlike drawing style, crayon texture, main colors, facial features, hairstyle and clothing. Allow natural flexibility in body proportions, posture, limb positions and joint articulation to perform the dance. Do not treat the drawing as a rigid cutout. Encourage playful, spontaneous and expressive full-body movement, with coordinated arms, legs, torso and head. Add lively bounces, playful hops, funny gestures, cheerful body sways, unexpected little variations and natural changes of rhythm. Make the character look genuinely happy and excited to dance, as if freely enjoying the music rather than following a rigid routine. Allow temporary shape adaptations when needed for fluid and convincing movement. Keep the character recognizable and faithful to the original drawing. No anime, manga or 3D restyling.";
 const FRAMING_RULE = 'Show the entire character from head to toe from the first frame; never crop it.';
 const NEGATIVE_PROMPT = 'anime style, redrawn face, face change, modified hair, teddy bear face, animal face, 3d render, vector style, helmet outline, head rotation';
 const DEFAULT_RENDER_STYLE = 'real_photo';
