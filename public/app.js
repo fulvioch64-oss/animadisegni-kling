@@ -1,6 +1,19 @@
 import { i18n } from './i18n.js';
 import { openCropper } from './cropper.js';
 
+// Initialize Vercel Analytics
+// Inject the Vercel analytics script
+(function() {
+  const script = document.createElement('script');
+  script.src = '/_vercel/insights/script.js';
+  script.defer = true;
+  script.onerror = () => {
+    // Script not available in local development, silently fail
+    console.log('Vercel Analytics not available in development mode');
+  };
+  document.head.appendChild(script);
+})();
+
 const uploadZone = document.getElementById('uploadZone');
 const fileInput = document.getElementById('fileInput');
 const uploadContent = document.getElementById('uploadContent');
